@@ -20,11 +20,22 @@ _CLASS_RE = re.compile(r'^\s*(class|struct)\s+(\w+)')
 _NAMESPACE_RE = re.compile(r'^\s*namespace\s+(\w+)')
 _ENUM_RE = re.compile(r'^\s*enum\s+(class\s+)?(\w+)')
 _TYPEDEF_RE = re.compile(r'^\s*typedef\s+')
-_FUNC_SIG_RE = re.compile(r'^(\w+(?:\s*\*)*)\s+(\w+)\s*\(')
+_FUNC_SIG_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+)\s*\(')
+# Keywords that look like types but aren't
+_SKIP_KEYWORDS = {'return', 'if', 'else', 'while', 'for', 'switch', 'case',
+                  'do', 'goto', 'break', 'continue', 'new', 'delete', 'throw',
+                  'sizeof', 'alignof', 'decltype', 'typeid', 'static_cast',
+                  'dynamic_cast', 'const_cast', 'reinterpret_cast', 'nullptr',
+                  'true', 'false', 'this'}
 _SIMPLE_DEFINE_RE = re.compile(r'^\s*#\s*define\s+(\w+)(?:\s*\([^)]*\))?\s+(.*)')
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"](.+?)[">]')
 _PRAGMA_RE = re.compile(r'^\s*#\s*pragma\s+(\w+)')
-_PARAM_RE = re.compile(r'(\w+(?:\s*\*)*)\s+(\w+)(?:\s*=\s*([^\s,]+))?')
+_PARAM_RE = re.compile(r'(\w+(?:\s*\*)*)(?:\s+(\w+))?(?:\s*=\s*([^\s,]+))?')
+
+# Patterns for class method extraction
+_METHOD_SCOPE_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+::\w+)\s*\(')
+_DTOR_RE = re.compile(r'^\s*~(\w+)\s*\(')
+_TEMPLATE_RE = re.compile(r'^\s*template\s*<')
 
 
 # ─── Main Parser ──────────────────────────────────────────────────
@@ -65,20 +76,35 @@ class HeaderParser:
                 i = self._skip_pragma_aux(lines, i)
                 continue
 
-            # Try top-level constructs
-            next_idx = self._try_parse_class(lines, i)
+            # Skip template lines (extract params for next construct)
+            if _TEMPLATE_RE.match(stripped):
+                i = self._skip_template(lines, i)
+                continue
+
+            # Skip lines with control flow keywords (return, if, else, etc.)
+            skip_words = {'return', 'if', 'else', 'while', 'for', 'switch',
+                         'case', 'do', 'goto', 'break', 'continue'}
+            first_word = stripped.split()[0] if stripped.split() else ""
+            if first_word in skip_words:
+                i += 1
+                continue
+
+            # Try top-level constructs (use stripped for matching)
+            next_idx = self._try_parse_class(lines, i, stripped)
             if next_idx is not None:
                 i = next_idx
                 continue
-            elif self._try_parse_namespace(lines, i):
+            next_idx = self._try_parse_namespace(lines, i, stripped)
+            if next_idx is not None:
+                i = next_idx
+                continue
+            elif self._try_parse_enum(lines, i, stripped):
                 i += 1
-            elif self._try_parse_enum(lines, i):
+            elif self._try_parse_typedef(lines, i, stripped):
                 i += 1
-            elif self._try_parse_typedef(lines, i):
+            elif self._try_parse_function(lines, i, stripped):
                 i += 1
-            elif self._try_parse_function(lines, i):
-                i += 1
-            elif self._try_parse_macro(lines, i):
+            elif self._try_parse_macro(lines, i, stripped):
                 i += 1
             else:
                 i += 1
@@ -113,16 +139,17 @@ class HeaderParser:
 
     # ─── Top-level construct parsers ──────────────────────────────
 
-    def _try_parse_class(self, lines: List[str], idx: int):
+    def _try_parse_class(self, lines: List[str], idx: int, stripped: str = None):
         """Parse a top-level class/struct declaration. Returns index after class body."""
-        line = lines[idx]
-        m = _CLASS_RE.match(line)
+        if stripped is None:
+            stripped = lines[idx].strip()
+        m = _CLASS_RE.match(stripped)
         if not m:
             return None
 
         kind = m.group(1)
         class_name = m.group(2)
-        after = line[m.end():]
+        after = stripped[m.end():]
 
         # Template params
         template_params = []
@@ -141,7 +168,7 @@ class HeaderParser:
         # Find the class body (skip to matching closing brace)
         methods = []
         attributes = []
-        end_idx = self._extract_class_body(lines, idx, methods, attributes)
+        end_idx = self._extract_class_body(lines, idx, methods, attributes, class_name)
 
         cls = Class(
             name=class_name,
@@ -182,10 +209,11 @@ class HeaderParser:
 
         return i
 
-    def _try_parse_namespace(self, lines: List[str], idx: int):
+    def _try_parse_namespace(self, lines: List[str], idx: int, stripped: str = None):
         """Parse a top-level namespace declaration. Returns index after namespace."""
-        line = lines[idx]
-        m = _NAMESPACE_RE.match(line)
+        if stripped is None:
+            stripped = lines[idx].strip()
+        m = _NAMESPACE_RE.match(stripped)
         if not m:
             return None
 
@@ -200,10 +228,11 @@ class HeaderParser:
         self.header.namespaces.append(ns)
         return end_idx
 
-    def _try_parse_enum(self, lines: List[str], idx: int) -> bool:
+    def _try_parse_enum(self, lines: List[str], idx: int, stripped: str = None) -> bool:
         """Parse a top-level enum declaration."""
-        line = lines[idx]
-        m = _ENUM_RE.match(line)
+        if stripped is None:
+            stripped = lines[idx].strip()
+        m = _ENUM_RE.match(stripped)
         if not m:
             return False
 
@@ -212,20 +241,21 @@ class HeaderParser:
 
         # Extract enum members from the line
         members = []
-        after = line[m.end():].strip()
+        after = stripped[m.end():].strip()
         if '{' in after:
             members = self._extract_enum_members(after)
 
         self.header.enums.append(Enum(name=enum_name, members=members, comment=comment))
         return True
 
-    def _try_parse_typedef(self, lines: List[str], idx: int) -> bool:
+    def _try_parse_typedef(self, lines: List[str], idx: int, stripped: str = None) -> bool:
         """Parse a top-level typedef."""
-        line = lines[idx]
-        if not _TYPEDEF_RE.match(line):
+        if stripped is None:
+            stripped = lines[idx].strip()
+        if not _TYPEDEF_RE.match(stripped):
             return False
 
-        after = line.strip()[8:]
+        after = stripped[8:]
         parts = after.rstrip(';').strip().split()
         if len(parts) >= 2:
             typedef_type = ' '.join(parts[:-1])
@@ -236,16 +266,22 @@ class HeaderParser:
             )
         return True
 
-    def _try_parse_function(self, lines: List[str], idx: int) -> bool:
+    def _try_parse_function(self, lines: List[str], idx: int, stripped: str = None) -> bool:
         """Parse a top-level function declaration."""
-        line = lines[idx]
-        m = _FUNC_SIG_RE.match(line)
+        if stripped is None:
+            stripped = lines[idx].strip()
+        m = _FUNC_SIG_RE.match(stripped)
         if not m:
             return False
 
         return_type = m.group(1)
         func_name = m.group(2)
-        after = line[m.end():]
+
+        # Skip if return type looks like a keyword (not a real type)
+        if return_type in _SKIP_KEYWORDS:
+            return False
+
+        after = stripped[m.end():]
 
         # Template params
         template_params = []
@@ -263,14 +299,15 @@ class HeaderParser:
             parameters=params,
             template_params=template_params,
             comment=comment,
-            is_inline='inline' in line.lower()
+            is_inline='inline' in stripped.lower()
         ))
         return True
 
-    def _try_parse_macro(self, lines: List[str], idx: int) -> bool:
+    def _try_parse_macro(self, lines: List[str], idx: int, stripped: str = None) -> bool:
         """Parse a #define macro."""
-        line = lines[idx]
-        m = _SIMPLE_DEFINE_RE.match(line)
+        if stripped is None:
+            stripped = lines[idx].strip()
+        m = _SIMPLE_DEFINE_RE.match(stripped)
         if not m:
             return False
 
@@ -284,10 +321,14 @@ class HeaderParser:
         self.header.macros.append(Macro(name=name, value=value, comment=comment))
         return True
 
+    def _skip_template(self, lines: List[str], start: int) -> int:
+        """Skip a template <...> line, return the line after it."""
+        return start + 1
+
     # ─── Body extraction helpers ──────────────────────────────────
 
     def _extract_class_body(self, lines: List[str], start_idx: int,
-                            methods: list, attributes: list) -> int:
+                            methods: list, attributes: list, class_name: str = "") -> int:
         """Extract methods and attributes from a class body. Returns index after class."""
         # Find opening brace
         brace_count = 0
@@ -305,6 +346,10 @@ class HeaderParser:
                         started = True
                     elif ch == '}':
                         brace_count -= 1
+
+            # Check for class end immediately after brace counting
+            if brace_count <= 0 and started:
+                return i + 1
 
             if not started:
                 i += 1
@@ -324,6 +369,84 @@ class HeaderParser:
                 i += 1
                 continue
 
+            # Skip brace-only lines (end of class, end of function, etc.)
+            if stripped in ('}', '{', '};', '};', '{;'):
+                i += 1
+                continue
+
+            # Skip template lines inside class body
+            if _TEMPLATE_RE.match(stripped):
+                i = self._skip_template(lines, i)
+                continue
+
+            # Skip lines starting with 'typedef' (typedef inside class is not a method)
+            if _TYPEDEF_RE.match(stripped):
+                i += 1
+                continue
+
+            # --- Method extraction (must happen BEFORE brace_count check) ---
+            # Check for destructor: ~ClassName(
+            if _DTOR_RE.match(stripped):
+                m = _DTOR_RE.match(stripped)
+                func_name = '~' + m.group(1)
+                after = stripped[m.end():]
+                params = self._extract_params(after)
+                comment = self._find_comment_backwards(lines, i)
+                methods.append(Function(
+                    name=func_name,
+                    return_type='',
+                    parameters=params,
+                    comment=comment,
+                    is_virtual=False,
+                    is_inline=False
+                ))
+                i += 1
+                continue
+
+            # Check for method with :: (e.g., int Font::write(...)
+            m = _METHOD_SCOPE_RE.match(stripped)
+            if m:
+                return_type = m.group(1)
+                scope_name = m.group(2)  # e.g., "Font::write"
+                # Extract just the method name (after ::)
+                func_name = scope_name.split('::')[-1]
+                after = stripped[m.end():]
+                params = self._extract_params(after)
+                comment = self._find_comment_backwards(lines, i)
+                is_virtual = 'virtual' in stripped.lower()
+                is_inline = 'inline' in stripped.lower()
+                is_static = 'static' in stripped.lower()
+                methods.append(Function(
+                    name=func_name,
+                    return_type=return_type,
+                    parameters=params,
+                    comment=comment,
+                    is_virtual=is_virtual,
+                    is_inline=is_inline,
+                    is_static=is_static
+                ))
+                i += 1
+                continue
+
+            # Check for constructor: ClassName(...)
+            ctor_m = re.match(r'^\s*(\w+)\s*\(', stripped)
+            if ctor_m and class_name and ctor_m.group(1) == class_name:
+                func_name = ctor_m.group(1)
+                after = stripped[ctor_m.end():]
+                params = self._extract_params(after)
+                comment = self._find_comment_backwards(lines, i)
+                is_inline = 'inline' in stripped.lower()
+                methods.append(Function(
+                    name=func_name,
+                    return_type='',
+                    parameters=params,
+                    comment=comment,
+                    is_virtual=False,
+                    is_inline=is_inline
+                ))
+                i += 1
+                continue
+
             # Skip lines inside function bodies (brace_count > 1 means we're inside a function)
             # Only process top-level class members (brace_count == 1)
             if brace_count > 1:
@@ -339,7 +462,7 @@ class HeaderParser:
                 i += 1
                 continue
 
-            # Function/method declaration
+            # Function/method declaration (regular signature)
             m = _FUNC_SIG_RE.match(stripped)
             if m:
                 return_type = m.group(1)
@@ -349,13 +472,15 @@ class HeaderParser:
                 comment = self._find_comment_backwards(lines, i)
                 is_virtual = 'virtual' in stripped.lower()
                 is_inline = 'inline' in stripped.lower()
+                is_static = 'static' in stripped.lower()
                 methods.append(Function(
                     name=func_name,
                     return_type=return_type,
                     parameters=params,
                     comment=comment,
                     is_virtual=is_virtual,
-                    is_inline=is_inline
+                    is_inline=is_inline,
+                    is_static=is_static
                 ))
                 i += 1
                 continue
@@ -386,6 +511,10 @@ class HeaderParser:
                     elif ch == '}':
                         brace_count -= 1
 
+            # Check for namespace end immediately after brace counting
+            if brace_count <= 0 and started:
+                return i + 1
+
             if not started:
                 i += 1
                 continue
@@ -394,28 +523,35 @@ class HeaderParser:
                 i += 1
                 continue
 
+            # Skip brace-only lines
+            if stripped in ('}', '{', '};', '};', '{;'):
+                i += 1
+                continue
+
+            # Skip template lines
+            if _TEMPLATE_RE.match(stripped):
+                i = self._skip_template(lines, i)
+                continue
+
             if self._is_pragma_aux_start(stripped):
                 i = self._skip_pragma_aux(lines, i)
                 continue
 
             # Try to parse namespace members
-            next_idx = self._try_parse_class(lines, i)
+            next_idx = self._try_parse_class(lines, i, stripped)
             if next_idx is not None:
                 i = next_idx
                 continue
-            elif self._try_parse_function(lines, i):
+            elif self._try_parse_function(lines, i, stripped):
                 i += 1
-            elif self._try_parse_enum(lines, i):
+            elif self._try_parse_enum(lines, i, stripped):
                 i += 1
-            elif self._try_parse_typedef(lines, i):
+            elif self._try_parse_typedef(lines, i, stripped):
                 i += 1
-            elif self._try_parse_macro(lines, i):
+            elif self._try_parse_macro(lines, i, stripped):
                 i += 1
             else:
                 i += 1
-
-            if brace_count <= 0:
-                return i + 1
 
         return i + 1
 
@@ -539,7 +675,7 @@ class HeaderParser:
             m = _PARAM_RE.match(part)
             if m:
                 param_type = m.group(1).strip()
-                param_name = m.group(2)
+                param_name = m.group(2) if m.group(2) else ""
                 default = m.group(3) if m.group(3) else ""
                 params.append(Parameter(name=param_name, type=param_type, default=default))
 

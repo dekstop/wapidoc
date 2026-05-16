@@ -36,13 +36,15 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - Handles `#include` directives — records them but doesn't follow (isolation mode)
   - Brace counting for class/namespace body extraction
 
-- [ ] **CRITICAL BUGS TO FIX:**
-  - **Brace counting includes commented-out lines** — lines like `// void (*draw_pixel)(...)` contain `{` and `}` which break brace counting. Must skip commented lines (lines starting with `//`) when counting braces.
-  - **Class methods not extracted** — `_extract_class_body` finds classes but doesn't extract methods. The `brace_count > 1` check skips function bodies correctly, but the function signature matching (`_FUNC_SIG_RE`) isn't triggering for class methods.
-  - **Namespace items not extracted** — `_extract_namespace_body` finds namespaces but `_try_parse_class` returns `None` for namespace members because the brace counting is wrong. Fixing the brace counting bug should resolve this.
-  - **Macros not extracted** — `_try_parse_macro` doesn't advance the line index, causing an infinite loop. The main loop in `parse()` needs to advance `i` after each construct match.
-  - **Template classes treated as nested classes** — e.g., `template <typename T> class Image {` is parsed as a nested class inside `Font`. Need to skip template lines before checking for class/namespace.
-  - **`_try_parse_class` and `_try_parse_namespace` don't return next index** — they return `None`/`False` instead of the index after the construct, so the main loop doesn't know where to continue.
+- [x] **Brace counting includes commented-out lines** — FIXED: Lines starting with `//` are now skipped when counting braces. The `brace_count <= 0` check now fires immediately after brace counting.
+- [x] **Class methods not extracted** — FIXED: Added patterns for constructors (`ClassName(`), destructors (`~ClassName(`), and methods with `::` scope. Method extraction now happens before the `brace_count > 1` check.
+- [x] **Namespace items not extracted** — FIXED: `_extract_namespace_body` now properly extracts classes, functions, enums, typedefs, and macros from namespace bodies.
+- [x] **Macros not extracted** — FIXED: The main loop now advances `i` after each construct match.
+- [x] **Template classes treated as nested classes** — FIXED: Template lines (`template <...>`) are now skipped in the main loop and class bodies.
+- [x] **`_try_parse_class` and `_try_parse_namespace` don't return next index** — FIXED: Both now return the index after the construct.
+- [x] **Control flow keywords parsed as functions** — FIXED: Added keyword filtering (`return`, `if`, `while`, etc.) in the main loop and `_try_parse_function`.
+- [x] **Function regex doesn't handle leading whitespace** — FIXED: Added `^\s*` and `inline`/`static`/`virtual` keyword handling to `_FUNC_SIG_RE`.
+- [x] **Unnamed parameters cause regex failure** — FIXED: Made parameter name optional in `_PARAM_RE`.
 
 ## Phase 4 — Markdown Writer
 
@@ -116,6 +118,11 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 - `cli.py` — CLI entry point. Works correctly, just needs the parser to produce valid output.
 
 ### Known Issues (see Phase 3 above)
+
+1. **Complex template types truncated** — Parameters like `Graphics<T>` are extracted as just `Graphics`. The simple regex-based parameter extraction doesn't handle complex template types with nested angle brackets.
+2. **Duplicate function declarations** — Some function declarations (e.g., `inline float sin(float);`) may appear twice: once as a declaration and once as part of the function definition.
+3. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
+4. **Attribute type/name extraction** — Multi-word types (e.g., `const unsigned int`) are not correctly extracted; only the first word is captured as the type.
 
 1. **Commented-out brace counting** — Lines starting with `//` should be skipped when counting braces.
 2. **Method extraction** — `_extract_class_body` needs to extract methods from class bodies.
