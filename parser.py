@@ -966,11 +966,12 @@ class HeaderParser:
         # If it starts with // (e.g., ////), it's likely a section marker
         if comment.startswith('//'):
             return True
-        # If it starts with a C/C++ type keyword followed by code-like patterns
+        # If it starts with a C/C++ type keyword or control-flow keyword followed by code-like patterns
         code_prefixes = ('void ', 'int ', 'float ', 'double ', 'char ', 'bool ',
                         'unsigned ', 'signed ', 'long ', 'short ', 'auto ',
                         'inline ', 'static ', 'const ', 'volatile ', 'extern ',
-                        'struct ', 'class ', 'enum ', 'typedef ', 'namespace ')
+                        'struct ', 'class ', 'enum ', 'typedef ', 'namespace ',
+                        'return ')
         lower = comment.lower().strip()
         for prefix in code_prefixes:
             if lower.startswith(prefix):
@@ -1000,6 +1001,10 @@ class HeaderParser:
                 i -= 1
                 continue
             if not stripped:
+                i -= 1
+                continue
+            if stripped.startswith('template'):
+                # Skip template lines and keep looking for // comments before them
                 i -= 1
                 continue
             break
