@@ -84,13 +84,16 @@ class TestCase:
         parser = HeaderParser()
         doc = parser.parse("test.h", self.source)
 
-        # 1. Block comment stripping
+        # 1. Block comment stripping (regular /* */ stripped, /** */ preserved)
         if self.expected_no_block_comments:
             stripped = parser._strip_block_comments(self.source)
-            if '/*' in stripped:
+            # Check for regular block comments: /* not followed by *
+            import re
+            if re.search(r'/\*(?!\*)', stripped):
+                idx = next(m.start() for m in re.finditer(r'/\*(?!\*)', stripped))
                 result["passed"] = False
                 result["errors"].append(
-                    f"Block comment not fully stripped: {repr(stripped[stripped.find('/*'):stripped.find('/*')+30])}"
+                    f"Regular block comment not fully stripped: {repr(stripped[idx:idx+30])}"
                 )
 
         # 2. Count checks
@@ -205,8 +208,8 @@ def get_test_cases() -> List[TestCase]:
         ),
         TestCase(
             "block_comment_multiline",
-            "Multi-line block comment should be fully stripped",
-            source="""/**
+            "Multi-line regular block comment should be fully stripped",
+            source="""/*
  * Header comment
  */
 int foo(int x);

@@ -82,6 +82,8 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - Output reviewed for GRAPHICS.MD, MATH32.MD, VECTOR.MD and others
 - [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now handles nested comments, CRLF, and single quotes in line comments.
 - [x] **Parameter extraction** — FIXED: `_PARAM_RE` regex now correctly extracts types, names, pointers, references, and multi-word types.
+- [x] **Doxygen comments not extracted** — FIXED: `_strip_block_comments()` now preserves `/** */` Doxygen comments while stripping regular `/* */` block comments. `_find_comment_backwards()` now correctly handles `*/` as comment end and skips template lines between comments and declarations.
+- [ ] **Doxygen comments for functions/methods not extracted** — Class-level Doxygen comments now work, but function and method Doxygen comments are not being extracted. Need to enhance `_find_comment_backwards()` to also capture Doxygen comments preceding function declarations (both top-level and class methods). Also need to handle multi-line function signatures where the comment is above the return type, not above the function name.
 
 - [x] Test with headers containing:
   - Heavy template usage (GRAPHICS.H) — tested, output reviewed

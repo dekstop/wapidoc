@@ -55,7 +55,7 @@ class HeaderParser:
 
     @staticmethod
     def _strip_block_comments(source: str) -> str:
-        """Remove all /* ... */ block comments from source code.
+        """Remove /* ... */ block comments but preserve /** ... */ Doxygen comments.
         Preserves line count so line indices remain valid.
         Handles both LF and CRLF line endings.
         Also strips // line comments to avoid quote confusion."""
@@ -79,7 +79,12 @@ class HeaderParser:
                     result.append(' ')
                     i += 1
             else:
-                if source[i:i+2] == '/*':
+                if source[i:i+3] == '/**':
+                    # Doxygen comment start — preserve it
+                    result.append('/**')
+                    i += 3
+                elif source[i:i+2] == '/*':
+                    # Regular block comment — strip it
                     in_block = True
                     i += 2
                     result.append(' ' * 2)
@@ -676,7 +681,35 @@ class HeaderParser:
             if not stripped:
                 i -= 1
                 continue
-            # Found potential Doxygen comment
+            if stripped.startswith('template'):
+                # Template line before class/struct, skip
+                i -= 1
+                continue
+            # Found potential Doxygen comment end (*/)
+            if stripped == '*/':
+                # Look backwards for the opening /**
+                j = i - 1
+                while j >= 0:
+                    s = lines[j].strip()
+                    if s.startswith('/**'):
+                        comment_lines = [s[3:].strip()]
+                        # Collect lines between /** and */
+                        k = j + 1
+                        while k < i:
+                            t = lines[k].strip()
+                            if t.startswith('/**'):
+                                comment_lines.append(t[3:].strip())
+                            elif t.startswith('*') and not t.startswith('//'):
+                                comment_lines.append(t[1:].strip())
+                            elif t.startswith('//'):
+                                comment_lines.append(t[2:].strip())
+                            k += 1
+                        return ' '.join(comment_lines)
+                    elif s.startswith('*') or s == '*/' or not s:
+                        j -= 1
+                    else:
+                        return ""
+            # Found potential Doxygen comment start (/**)
             if stripped.startswith('/**'):
                 comment_lines = [stripped[3:].strip()]
                 j = i - 1
