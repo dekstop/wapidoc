@@ -4,10 +4,16 @@ Markdown writer for API documentation.
 Generates structured markdown from HeaderDoc AST.
 """
 
-from models import (
-    HeaderDoc, Class, Function, Attribute,
-    Namespace, Enum, Typedef, Macro
-)
+try:
+    from .models import (
+        HeaderDoc, Class, Function, Attribute,
+        Namespace, Enum, Typedef, Macro
+    )
+except ImportError:
+    from models import (
+        HeaderDoc, Class, Function, Attribute,
+        Namespace, Enum, Typedef, Macro
+    )
 
 
 def generate_markdown(header_doc: HeaderDoc) -> str:

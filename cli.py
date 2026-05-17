@@ -3,15 +3,19 @@ CLI entry point for the Watcom API Doc Generator.
 
 Usage:
     python -m wapidoc <project_root> [--output <dir>] [--verbose]
+    python wapidoc/cli.py <project_root> [--output <dir>] [--verbose]
 """
 
 import argparse
-import os
 import sys
 from pathlib import Path
 
-from parser import HeaderParser
-from writer import generate_markdown
+try:
+    from .parser import HeaderParser
+    from .writer import generate_markdown
+except ImportError:
+    from parser import HeaderParser
+    from writer import generate_markdown
 
 
 def main():

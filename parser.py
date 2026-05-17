@@ -8,10 +8,16 @@ from Watcom C++ headers. Standard library only.
 import re
 from typing import List, Optional
 
-from models import (
-    HeaderDoc, Class, Function, Attribute, Parameter,
-    Namespace, Enum, EnumMember, Typedef, Macro
-)
+try:
+    from .models import (
+        HeaderDoc, Class, Function, Attribute, Parameter,
+        Namespace, Enum, EnumMember, Typedef, Macro
+    )
+except ImportError:
+    from models import (
+        HeaderDoc, Class, Function, Attribute, Parameter,
+        Namespace, Enum, EnumMember, Typedef, Macro
+    )
 
 
 # ─── Regex patterns ───────────────────────────────────────────────
