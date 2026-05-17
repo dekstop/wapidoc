@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ---
 
+### 2026-05-17 — Fix // line comment extraction and param type/symbol placement
+
+- Preserve `//` line comments in `_strip_block_comments()` (previously stripped entirely)
+- Smart filtering: skip commented-out code (function calls, braces, type keywords) while capturing real documentation
+- Move `*` and `&` symbols from param names to param types consistently
+- Updated test expectations to match new correct behaviour
+- 27/27 tests passing
+- Examples:
+  - `uint8_t *data` → type=`uint8_t*`, name=`data`
+  - `int &a` → type=`int&`, name=`a`
+  - `const char *txt` → type=`const char*`, name=`txt`
+
+---
+
 ### 2026-05-17 — Fix attribute type/name split for pointer/reference types
 
 - Pointer symbols (`*`) and reference symbols (`&`) attached to variable names now correctly move to the type
