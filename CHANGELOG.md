@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 ---
 
+### 2026-05-17 — Fix // line comments before template methods
+
+- Template methods (e.g. `Graphics::fill`, `Graphics::line`, `Font::write`) now correctly capture preceding `//` line comments
+- `_find_comment_backwards()` now skips template lines in the first loop instead of stopping, so // comments before `template<...>` are preserved
+- Added `return` to `code_prefixes` in `_is_code_line()` to filter out commented-out code like `return text<SetPixel>(...`
+- Examples:
+  - `// Uses pixel drawing functor` → now captured for `Graphics::fill`, `Graphics::text`
+  - `// Bresenham.` → now captured for `Graphics::line`, `Graphics::open_line`, `Graphics::fully_open_line`
+  - `// X/Y marks the centre.` → now captured for `Particle::draw`
+
+---
+
 ### 2026-05-17 — Sprint 2: Expand test coverage
 
 - Added 18 new regression tests from git commit history (block comment stripping, param extraction, attribute splitting, control flow skipping, pragma aux, template handling, namespace items, duplicate dedup)
