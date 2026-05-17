@@ -6,14 +6,29 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 
 ---
 
-## In Progress
+## Changelog
 
-### Parser limitations (parser.py)
+### Completed
+
+- ✅ **Namespace body extraction fixed** — `_extract_namespace_body()` now correctly:
+  - Temporarily redirects header lists so namespace items are collected locally
+  - Tracks function bodies and skips past them (preventing brace-counting confusion)
+  - Counts braces from skipped lines to maintain correct namespace brace tracking
+  - Collects all items (functions, classes, enums, typedefs, macros) into `ns.items`
+  - Restores original header lists after parsing
+  - Added `_count_braces_in_range()` and `_skip_function_body()` helper methods
+  - Updated test harness with `expected_namespace_items` validation
+
+---
+
+## Current Limitations
+
+### Parser issues (parser.py)
 
 Remaining issues that affect output quality:
 
 1. **Complex template types truncated** — Parameters like `Graphics<T>` are extracted as just `Graphics`. The simple regex-based parameter extraction doesn't handle complex template types with nested angle brackets.
-2. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
+2. **Free function body tracking** — The main parser loop doesn't track free function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
 3. **Line comments not extracted** — `//` line comments preceding declarations are skipped by `_find_comment_backwards()`. Only Doxygen-style `/** */` comments are extracted.
 
 ---
@@ -22,7 +37,7 @@ Remaining issues that affect output quality:
 
 ### Expand test coverage
 
-The test harness skeleton (`test_harness.py`) is in place with 27 passing tests. The following enhancements are planned:
+The test harness (`test_harness.py`) is in place with 27 passing tests. The following enhancements are planned:
 
 **Priority 1 — Regression tests from git history**
 

@@ -776,11 +776,41 @@ class HeaderParser:
 
         return i + 1
 
+    def _count_braces_in_range(self, lines: List[str], start: int, end: int) -> int:
+        """Count net brace change in lines[start:end]. Skips // comments."""
+        count = 0
+        for idx in range(start, end):
+            stripped = lines[idx].strip()
+            if not stripped.startswith('//'):
+                for ch in stripped:
+                    if ch == '{':
+                        count += 1
+                    elif ch == '}':
+                        count -= 1
+        return count
+
     def _extract_namespace_body(self, lines: List[str], start_idx: int, items: list) -> int:
-        """Extract items from a namespace body. Returns index after namespace."""
+        """Extract items from a namespace body. Returns index after namespace.
+        
+        Temporarily redirects header lists so namespace items are collected locally,
+        then moves them into the items list. Tracks function bodies to avoid
+        brace-counting confusion.
+        """
         brace_count = 0
         started = False
         i = start_idx
+
+        # Temporarily redirect header lists so namespace items are collected locally
+        orig_functions = self.header.functions
+        orig_classes = self.header.classes
+        orig_enums = self.header.enums
+        orig_typedefs = self.header.typedefs
+        orig_macros = self.header.macros
+        self.header.functions = []
+        self.header.classes = []
+        self.header.enums = []
+        self.header.typedefs = []
+        self.header.macros = []
 
         while i < len(lines):
             stripped = lines[i].strip()
@@ -796,7 +826,7 @@ class HeaderParser:
 
             # Check for namespace end immediately after brace counting
             if brace_count <= 0 and started:
-                return i + 1
+                break
 
             if not started:
                 i += 1
@@ -823,10 +853,24 @@ class HeaderParser:
             # Try to parse namespace members
             next_idx = self._try_parse_class(lines, i, stripped)
             if next_idx is not None:
+                # Count braces from skipped lines (the opening '{' was already counted)
+                brace_count += self._count_braces_in_range(lines, i + 1, next_idx)
                 i = next_idx
                 continue
-            elif self._try_parse_function(lines, i, stripped):
-                i += 1
+
+            # For functions: check if body continues (has '{' without matching '}')
+            func_result = self._try_parse_function(lines, i, stripped, set())
+            if func_result:
+                open_braces = stripped.count('{')
+                close_braces = stripped.count('}')
+                if open_braces > close_braces:
+                    # Function body continues on next lines — skip past it
+                    # The opening '{' was already counted in brace_count
+                    i = self._skip_function_body(lines, i)
+                else:
+                    i += 1
+                continue
+
             elif self._try_parse_enum(lines, i, stripped):
                 i += 1
             elif self._try_parse_typedef(lines, i, stripped):
@@ -838,6 +882,44 @@ class HeaderParser:
                 self._current_template_params = []
                 i += 1
 
+        # Collect items into namespace
+        for cls in self.header.classes:
+            items.append(cls)
+        for func in self.header.functions:
+            items.append(func)
+        for enum in self.header.enums:
+            items.append(enum)
+        for typedef in self.header.typedefs:
+            items.append(typedef)
+        for macro in self.header.macros:
+            items.append(macro)
+
+        # Restore original lists
+        self.header.functions = orig_functions
+        self.header.classes = orig_classes
+        self.header.enums = orig_enums
+        self.header.typedefs = orig_typedefs
+        self.header.macros = orig_macros
+
+        return i + 1
+
+    def _skip_function_body(self, lines: List[str], start_idx: int) -> int:
+        """Skip past a function body starting from the line after start_idx.
+        The opening brace on start_idx has already been counted by the caller.
+        Returns the index after the closing brace."""
+        brace_count = 1  # Start with 1 because the opening brace was already counted
+        i = start_idx + 1
+        while i < len(lines):
+            stripped = lines[i].strip()
+            if not stripped.startswith('//'):
+                for ch in stripped:
+                    if ch == '{':
+                        brace_count += 1
+                    elif ch == '}':
+                        brace_count -= 1
+            if brace_count <= 0:
+                return i + 1
+            i += 1
         return i + 1
 
     def _is_attribute(self, stripped: str, methods: list) -> bool:

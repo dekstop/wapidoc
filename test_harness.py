@@ -39,7 +39,8 @@ class TestCase:
                  expected_attributes: List[Tuple[str, str]] = None,
                  expected_no_block_comments: bool = True,
                  expected_no_duplicates: bool = True,
-                 expected_functions_match: List[Tuple[str, str, list]] = None):
+                 expected_functions_match: List[Tuple[str, str, list]] = None,
+                 expected_namespace_items: List[Tuple[str, str, list]] = None):
         """
         Args:
             name: Unique test case identifier
@@ -71,6 +72,7 @@ class TestCase:
         self.expected_no_block_comments = expected_no_block_comments
         self.expected_no_duplicates = expected_no_duplicates
         self.expected_functions_match = expected_functions_match or []
+        self.expected_namespace_items = expected_namespace_items or []
 
     def run(self) -> dict:
         """Run this test case and return results dict."""
@@ -179,7 +181,35 @@ class TestCase:
                     f"Type for {attr_name}: expected {exp_type}, got {attr_map[key]}"
                 )
 
-        # 7. Markdown generation (no crashes)
+        # 7. Namespace items extraction
+        from models import Function as ModelFunction
+        if self.expected_namespace_items:
+            ns_item_map = {}
+            for ns in doc.namespaces:
+                for item in ns.items:
+                    if isinstance(item, ModelFunction):
+                        ns_item_map[item.name] = item
+            for func_name, exp_type, exp_params in self.expected_namespace_items:
+                if func_name not in ns_item_map:
+                    result["passed"] = False
+                    result["errors"].append(
+                        f"Namespace function {func_name} not found"
+                    )
+                    continue
+                func = ns_item_map[func_name]
+                actual_params = [(p.type, p.name) for p in func.parameters]
+                if func.return_type != exp_type:
+                    result["passed"] = False
+                    result["errors"].append(
+                        f"Return type for {func_name}: expected {exp_type}, got {func.return_type}"
+                    )
+                if actual_params != exp_params:
+                    result["passed"] = False
+                    result["errors"].append(
+                        f"Params for {func_name}: expected {exp_params}, got {actual_params}"
+                    )
+
+        # 8. Markdown generation (no crashes)
         try:
             md = generate_markdown(doc)
             result["markdown_length"] = len(md)
@@ -435,8 +465,8 @@ public:
     inline uint8_t saturate(uint8_t v);
 }""",
             expected_namespaces=1,
-            expected_functions=1,
-            expected_functions_match=[("saturate", "uint8_t", [("uint8_t", "v")])]
+            expected_functions=0,  # Namespace functions go into ns.items, not global
+            expected_namespace_items=[("saturate", "uint8_t", [("uint8_t", "v")])]
         ),
 
         # ─── Integration tests (real-world patterns) ─────────────────

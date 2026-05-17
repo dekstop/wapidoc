@@ -1,5 +1,13 @@
 # wapidoc — Watcom C++ API Doc Generator
 
+## Status
+
+✅ **Parser** — Extracts classes, methods, namespaces, functions, enums, typedefs, macros, and Doxygen comments.
+✅ **Test harness** — 27 passing tests covering parsers, output, and integration.
+✅ **Output** — Generates clean markdown API documentation for Watcom C++ headers.
+
+---
+
 ## Overview
 
 `wapidoc` is a Python 3 tool that scans Watcom C++ header files and produces
@@ -114,23 +122,18 @@ Key parsing features:
 * Template parameter extraction with angle bracket depth tracking
 * Function parameter parsing with default value detection
 
-## Known Limitations
+## Current Limitations
 
 The parser currently has several known issues that affect output quality:
 
-1. **Commented-out brace counting** — Lines starting with `//` should be
-   skipped when counting braces, but sometimes commented code containing `{` and `}`
-   breaks the brace counting logic.
-2. **Class methods not always extracted** — `_extract_class_body` finds class
-   bodies but method extraction can miss declarations, especially with template
-   specialisation or complex signatures.
-3. **Namespace items incomplete** — `_extract_namespace_body` can fail to extract
-   classes, functions, and enums from namespace blocks.
-4. **Macro parsing** — `_try_parse_macro` can cause infinite loops on certain
-   constructs due to line index not advancing.
-5. **operator* style functions** — Functions with `operator*` syntax (e.g.
-   `Vector<T,Dim> operator*(T v, const Vector<T,Dim> &p)`) are not matched by
-   the function regex because `*` is part of the operator name. The regex expects
-   `name(...)` but sees `name*(...`.
+1. **Complex template types truncated** — Parameters like `Graphics<T>` are
+   extracted as just `Graphics`. The regex-based parameter extraction doesn't
+   handle complex template types with nested angle brackets.
+2. **Free function body tracking** — The main parser loop doesn't track free
+   function bodies, so lines inside free function bodies may be incorrectly
+   matched by regex patterns.
+3. **Line comments not extracted** — `//` line comments preceding declarations
+   are skipped by `_find_comment_backwards()`. Only Doxygen-style `/** */`
+   comments are extracted.
 
 See `TODO.md` for the full list of bugs and planned fixes.
