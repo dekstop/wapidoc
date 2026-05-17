@@ -79,7 +79,6 @@ Remaining issues that affect output quality:
 
 1. **Complex template types truncated** — Parameters like `Graphics<T>` are extracted as just `Graphics`. The simple regex-based parameter extraction doesn't handle complex template types with nested angle brackets.
 2. **Free function body tracking** — The main parser loop doesn't track free function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
-3. **Line comments not extracted** — `//` line comments preceding declarations are skipped by `_find_comment_backwards()`. Only Doxygen-style `/** */` comments are extracted.
 
 ---
 
