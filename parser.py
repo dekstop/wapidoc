@@ -34,9 +34,9 @@ _PRAGMA_RE = re.compile(r'^\s*#\s*pragma\s+(\w+)')
 # Type can include complex templates like 'Graphics<T>'
 # Type group is greedy (no * or &) so it captures everything up to the name
 # Name group includes * and & for pointer/reference parameters
-_PARAM_RE = re.compile(r'^((?:[\w<>,\[\]\s]+)\s+)([\w*&]+)(?:\s*=\s*([^\s,]+))?')
+_PARAM_RE = re.compile(r'^((?:[\w<>,\[\]\s*&]+)\s+)([\w*&]+)(?:\s*=\s*([^\s,]+))?')
 # For anonymous parameters (just type, no name)
-_PARAM_RE_ANON = re.compile(r'^([\w<>,\[\]\s]+)$')
+_PARAM_RE_ANON = re.compile(r'^([\w<>,\[\]\s*&]+)$')
 
 # Patterns for class method extraction
 _METHOD_SCOPE_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+::\w+)\s*\(')
