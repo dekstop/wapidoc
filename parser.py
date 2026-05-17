@@ -20,7 +20,7 @@ _CLASS_RE = re.compile(r'^\s*(class|struct)\s+(\w+)')
 _NAMESPACE_RE = re.compile(r'^\s*namespace\s+(\w+)')
 _ENUM_RE = re.compile(r'^\s*enum\s+(class\s+)?(\w+)')
 _TYPEDEF_RE = re.compile(r'^\s*typedef\s+')
-_FUNC_SIG_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+)\s*\(')
+_FUNC_SIG_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+(?:\s*::\s*\w+)?)\s*\(')
 # Keywords that look like types but aren't
 _SKIP_KEYWORDS = {'return', 'if', 'else', 'while', 'for', 'switch', 'case',
                   'do', 'goto', 'break', 'continue', 'new', 'delete', 'throw',
@@ -30,7 +30,13 @@ _SKIP_KEYWORDS = {'return', 'if', 'else', 'while', 'for', 'switch', 'case',
 _SIMPLE_DEFINE_RE = re.compile(r'^\s*#\s*define\s+(\w+)(?:\s*\([^)]*\))?\s+(.*)')
 _INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"](.+?)[">]')
 _PRAGMA_RE = re.compile(r'^\s*#\s*pragma\s+(\w+)')
-_PARAM_RE = re.compile(r'(\w+(?:\s*\*)*)(?:\s+(\w+))?(?:\s*=\s*([^\s,]+))?')
+# Parameter regex: captures (type) (name) (default)
+# Type can include complex templates like 'Graphics<T>'
+# Type group is greedy (no * or &) so it captures everything up to the name
+# Name group includes * and & for pointer/reference parameters
+_PARAM_RE = re.compile(r'^((?:[\w<>,\[\]\s]+)\s+)([\w*&]+)(?:\s*=\s*([^\s,]+))?')
+# For anonymous parameters (just type, no name)
+_PARAM_RE_ANON = re.compile(r'^([\w<>,\[\]\s]+)$')
 
 # Patterns for class method extraction
 _METHOD_SCOPE_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+::\w+)\s*\(')
@@ -38,7 +44,8 @@ _DTOR_RE = re.compile(r'^\s*~(\w+)\s*\(')
 _TEMPLATE_RE = re.compile(r'^\s*template\s*<')
 
 
-# ─── Main Parser ──────────────────────────────────────────────────
+# ─── Block comment stripping ──────────────────────────────────
+
 
 class HeaderParser:
     """Parse a Watcom C++ header file and produce a HeaderDoc AST."""
@@ -46,9 +53,77 @@ class HeaderParser:
     def __init__(self):
         self.header = HeaderDoc(filename="")
 
+    @staticmethod
+    def _strip_block_comments(source: str) -> str:
+        """Remove all /* ... */ block comments from source code.
+        Preserves line count so line indices remain valid.
+        Handles both LF and CRLF line endings.
+        Also strips // line comments to avoid quote confusion."""
+        result = []
+        i = 0
+        in_block = False
+        while i < len(source):
+            if in_block:
+                if source[i:i+2] == '*/':
+                    in_block = False
+                    i += 2
+                    result.append(' ' * 2)
+                elif source[i] == '\n':
+                    result.append('\n')
+                    i += 1
+                elif source[i] == '\r':
+                    # CRLF: keep the \r\n but strip the \r
+                    result.append(' ')
+                    i += 1
+                else:
+                    result.append(' ')
+                    i += 1
+            else:
+                if source[i:i+2] == '/*':
+                    in_block = True
+                    i += 2
+                    result.append(' ' * 2)
+                elif source[i:i+2] == '//':
+                    # Line comment: skip to end of line
+                    i += 2
+                    while i < len(source) and source[i] != '\n' and source[i] != '\r':
+                        i += 1
+                    # Preserve the newline
+                    if i < len(source):
+                        if source[i] == '\r':
+                            result.append(' ')
+                            i += 1
+                            if i < len(source) and source[i] == '\n':
+                                result.append('\n')
+                                i += 1
+                        else:
+                            result.append(source[i])
+                            i += 1
+                elif source[i] == '"':
+                    quote = source[i]
+                    result.append(quote)
+                    i += 1
+                    while i < len(source):
+                        if source[i] == '\\' and i + 1 < len(source):
+                            result.append(source[i:i+2])
+                            i += 2
+                        elif source[i] == quote:
+                            result.append(source[i])
+                            i += 1
+                            break
+                        else:
+                            result.append(source[i])
+                            i += 1
+                else:
+                    result.append(source[i])
+                    i += 1
+        return ''.join(result)
+
     def parse(self, filename: str, source: str) -> HeaderDoc:
         """Parse a header file and return the HeaderDoc AST."""
         self.header = HeaderDoc(filename=filename)
+        # Strip block comments (/* ... */) before parsing
+        source = self._strip_block_comments(source)
         lines = source.split('\n')
 
         # Extract header-level comment
@@ -56,6 +131,9 @@ class HeaderParser:
 
         # Extract #includes
         self._extract_includes(lines)
+
+        # Track seen function signatures to avoid duplicates
+        seen_functions = set()
 
         # Process line by line
         i = 0
@@ -102,7 +180,7 @@ class HeaderParser:
                 i += 1
             elif self._try_parse_typedef(lines, i, stripped):
                 i += 1
-            elif self._try_parse_function(lines, i, stripped):
+            elif self._try_parse_function(lines, i, stripped, seen_functions):
                 i += 1
             elif self._try_parse_macro(lines, i, stripped):
                 i += 1
@@ -137,7 +215,7 @@ class HeaderParser:
             if m:
                 self.header.includes.append(m.group(1))
 
-    # ─── Top-level construct parsers ──────────────────────────────
+    # ─── Top-level construct parsers ──────────────────────────
 
     def _try_parse_class(self, lines: List[str], idx: int, stripped: str = None):
         """Parse a top-level class/struct declaration. Returns index after class body."""
@@ -266,8 +344,10 @@ class HeaderParser:
             )
         return True
 
-    def _try_parse_function(self, lines: List[str], idx: int, stripped: str = None) -> bool:
-        """Parse a top-level function declaration."""
+    def _try_parse_function(self, lines: List[str], idx: int, stripped: str = None,
+                            seen_functions: set = None) -> bool:
+        """Parse a top-level function declaration.
+        Uses seen_functions set to avoid duplicate declarations."""
         if stripped is None:
             stripped = lines[idx].strip()
         m = _FUNC_SIG_RE.match(stripped)
@@ -290,6 +370,13 @@ class HeaderParser:
 
         # Parameters
         params = self._extract_params(after)
+
+        # Build a signature key for deduplication
+        sig_key = (func_name, return_type, len(params))
+        if seen_functions is not None:
+            if sig_key in seen_functions:
+                return False
+            seen_functions.add(sig_key)
 
         comment = self._find_comment_backwards(lines, idx)
 
@@ -325,7 +412,7 @@ class HeaderParser:
         """Skip a template <...> line, return the line after it."""
         return start + 1
 
-    # ─── Body extraction helpers ──────────────────────────────────
+    # ─── Body extraction helpers ──────────────────────────────
 
     def _extract_class_body(self, lines: List[str], start_idx: int,
                             methods: list, attributes: list, class_name: str = "") -> int:
@@ -571,7 +658,7 @@ class HeaderParser:
             return False
         return True
 
-    # ─── Comment extraction ───────────────────────────────────────
+    # ─── Comment extraction ───────────────────────────────────
 
     def _find_comment_backwards(self, lines: List[str], idx: int) -> str:
         """Find the Doxygen comment immediately preceding a line."""
@@ -607,7 +694,7 @@ class HeaderParser:
             return ""
         return ""
 
-    # ─── Utility helpers ──────────────────────────────────────────
+    # ─── Utility helpers ──────────────────────────────────────
 
     @staticmethod
     def _is_pragma_aux_start(stripped: str) -> bool:
@@ -677,7 +764,16 @@ class HeaderParser:
                 param_type = m.group(1).strip()
                 param_name = m.group(2) if m.group(2) else ""
                 default = m.group(3) if m.group(3) else ""
+                # Clean up type: remove extra whitespace
+                param_type = ' '.join(param_type.split())
                 params.append(Parameter(name=param_name, type=param_type, default=default))
+            else:
+                # Try anonymous parameter (just type, no name)
+                m = _PARAM_RE_ANON.match(part)
+                if m:
+                    param_type = m.group(1).strip()
+                    param_type = ' '.join(param_type.split())
+                    params.append(Parameter(name="", type=param_type, default=""))
 
         return params
 

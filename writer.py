@@ -154,7 +154,12 @@ def _format_function(func: Function) -> list:
     if qual_str:
         qual_str = f"{qual_str} "
 
-    lines.append(f"- `{qual_str}{func.return_type} {func.name}{template_str}({params_str})`")
+    # Build signature: handle empty return type for constructors
+    if func.return_type.strip():
+        sig = f"{qual_str}{func.return_type} {func.name}{template_str}({params_str})"
+    else:
+        sig = f"{qual_str}{func.name}{template_str}({params_str})"
+    lines.append(f"- `{sig}`")
 
     # Comment
     if func.comment:
@@ -258,8 +263,16 @@ def _format_params(params: list) -> str:
     """Format function parameters."""
     parts = []
     for p in params:
+        param_type = p.type.strip()
+        param_name = p.name.strip()
         if p.default:
-            parts.append(f"{p.type} {p.name}={p.default}")
+            if param_name:
+                parts.append(f"{param_type} {param_name}={p.default}")
+            else:
+                parts.append(f"{param_type}={p.default}")
         else:
-            parts.append(f"{p.type} {p.name}")
+            if param_name:
+                parts.append(f"{param_type} {param_name}")
+            else:
+                parts.append(param_type)
     return ", ".join(parts)

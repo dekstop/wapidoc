@@ -80,6 +80,14 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - `python3 wapi/cli.py /path/to/Sandbox/EXAMPLE -v -o /path/to/Sandbox/docs`
   - 28 header files processed, 0 errors
   - Output reviewed for GRAPHICS.MD, MATH32.MD, VECTOR.MD and others
+- [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now correctly handles:
+  - Nested `/* ... */` patterns inside block comments
+  - Windows CRLF line endings
+  - Line comments (`//`) that contain single quotes (e.g., `can't`) which previously caused the parser to get stuck in quote mode
+- [x] **Parameter extraction** — FIXED: `_PARAM_RE` regex updated to correctly extract types and names:
+  - Anonymous parameters (e.g., `float`) now extracted correctly
+  - Pointer/reference parameters (e.g., `const Vector<T,Dim> &p`) now extracted correctly
+  - Multi-word types (e.g., `const char *`) now extracted correctly
 - [ ] Fix parser edge cases discovered during testing
 - [x] Test with headers containing:
   - Heavy template usage (GRAPHICS.H) — tested, output reviewed
@@ -113,6 +121,8 @@ These are the remaining known issues that affect output quality:
 3. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
 
 4. **Attribute type/name extraction** — Multi-word types (e.g., `const unsigned int`) are not correctly extracted; only the first word is captured as the type.
+5. **Duplicate function declarations** — Some function declarations may appear twice (declaration + definition). Deduplication uses `(func_name, return_type, len(params))` but doesn't account for different parameter types.
+6. **Empty template classes** — Template classes with no methods (e.g., `SetPixel`) are extracted as empty classes.
 
 ---
 
