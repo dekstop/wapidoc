@@ -340,10 +340,26 @@ class HeaderParser:
 
         after = stripped[8:]
         parts = after.rstrip(';').strip().split()
-        if len(parts) >= 2:
+
+        typedef_name = ""
+        typedef_type = ""
+        comment = self._find_comment_backwards(lines, idx)
+
+        # Check for multi-line typedef (e.g., typedef struct/enum/union { ... } name;)
+        if after.strip().startswith('struct {') or after.strip().startswith('union {') or after.strip().startswith('enum {'):
+            # Look for the closing } name;
+            for j in range(idx + 1, min(idx + 50, len(lines))):
+                line = lines[j].strip()
+                m = re.search(r'}\s+(\w+)\s*;', line)
+                if m:
+                    typedef_name = m.group(1)
+                    typedef_type = after.strip().split()[0]  # struct, union, or enum
+                    break
+        elif len(parts) >= 2:
             typedef_type = ' '.join(parts[:-1])
             typedef_name = parts[-1]
-            comment = self._find_comment_backwards(lines, idx)
+
+        if typedef_name:
             self.header.typedefs.append(
                 Typedef(name=typedef_name, type=typedef_type, comment=comment)
             )

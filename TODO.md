@@ -83,7 +83,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 - [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now handles nested comments, CRLF, and single quotes in line comments.
 - [x] **Parameter extraction** — FIXED: `_PARAM_RE` regex now correctly extracts types, names, pointers, references, and multi-word types.
 - [x] **Doxygen comments not extracted** — FIXED: `_strip_block_comments()` now preserves `/** */` Doxygen comments while stripping regular `/* */` block comments. `_find_comment_backwards()` now correctly handles `*/` as comment end and skips template lines between comments and declarations.
-- [ ] **Doxygen comments for functions/methods not extracted** — Class-level Doxygen comments now work, but function and method Doxygen comments are not being extracted. Need to enhance `_find_comment_backwards()` to also capture Doxygen comments preceding function declarations (both top-level and class methods). Also need to handle multi-line function signatures where the comment is above the return type, not above the function name.
+- [x] **Doxygen comments for functions/methods not extracted** — FIXED: `_find_comment_backwards()` now correctly extracts Doxygen comments for top-level functions, class methods, and multi-line declarations. Also fixed multi-line typedef parsing (`typedef struct/enum/union { ... } name;`).
 
 - [x] Test with headers containing:
   - Heavy template usage (GRAPHICS.H) — tested, output reviewed
@@ -118,6 +118,8 @@ These are the remaining known issues that affect output quality:
 3. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
 
 4. **Attribute type/name extraction** — Multi-word types (e.g., `const unsigned int`) are not correctly extracted; only the first word is captured as the type.
+
+5. **Line comments not extracted** — `//` line comments preceding declarations are skipped by `_find_comment_backwards()`. Only Doxygen-style `/** */` comments are extracted.
 
 ---
 
