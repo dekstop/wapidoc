@@ -1,8 +1,8 @@
-# wapi — Watcom C++ API Doc Generator
+# wapidoc — Watcom C++ API Doc Generator
 
 ## Overview
 
-`wapi` is a Python 3 tool that scans Watcom C++ header files and produces
+`wapidoc` is a Python 3 tool that scans Watcom C++ header files and produces
 structured markdown API documentation. It is designed for use by coding agents
 that need to understand a C++ codebase without consuming the entire source in
 context memory.
@@ -19,7 +19,7 @@ generates clean markdown summaries that agents can consult on demand.
 ## Usage
 
 ```bash
-python3 wapi/cli.py <project_root> [options]
+python3 wapidoc/cli.py <project_root> [options]
 ```
 
 ### Arguments
@@ -38,7 +38,7 @@ python3 wapi/cli.py <project_root> [options]
 ### Example
 
 ```bash
-python3 wapi/cli.py /path/to/project -v -o /path/to/docs
+python3 wapidoc/cli.py /path/to/project -v -o /path/to/docs
 ```
 
 This scans `/path/to/project` recursively for `.H` and `.h` files, parses each

@@ -1,5 +1,5 @@
 """
-Test harness for wapi parser and writer.
+Test harness for wapidoc parser and writer.
 
 Runs regression tests against known-good and known-bad inputs,
 producing pass/fail reports and highlighting output differences.
@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import List, Tuple, Optional
 
-# Ensure wapi is importable
+# Ensure wapidoc is importable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from parser import HeaderParser
@@ -564,7 +564,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Test harness for wapi parser and writer"
+        description="Test harness for wapidoc parser and writer"
     )
     parser.add_argument(
         "test_name", nargs="?", default=None,

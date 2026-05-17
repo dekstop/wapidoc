@@ -2,7 +2,7 @@
 CLI entry point for the Watcom API Doc Generator.
 
 Usage:
-    python -m wapi <project_root> [--output <dir>] [--verbose]
+    python -m wapidoc <project_root> [--output <dir>] [--verbose]
 """
 
 import argparse

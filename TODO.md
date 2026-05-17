@@ -8,8 +8,8 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 
 ## Phase 1 — Project Setup
 
-- [x] Create project directory structure: `wapi/` with `__init__.py`, `cli.py`, `parser.py`, `writer.py`, `models.py`
-- [x] Create `wapi/TODO.md` (this file)
+- [x] Create project directory structure: `wapidoc/` with `__init__.py`, `cli.py`, `parser.py`, `writer.py`, `models.py`
+- [x] Create `wapidoc/TODO.md` (this file)
 - [x] Create `README.md` in project root with usage instructions
 - [x] Create `.gitignore` for Python artifacts
 
@@ -77,7 +77,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 ## Phase 6 — Testing & Refinement
 
 - [x] Run against EXAMPLE project:
-  - `python3 wapi/cli.py /path/to/Sandbox/EXAMPLE -v -o /path/to/Sandbox/docs`
+  - `python3 wapidoc/cli.py /path/to/Sandbox/EXAMPLE -v -o /path/to/Sandbox/docs`
   - 28 header files processed, 0 errors
   - Output reviewed for GRAPHICS.MD, MATH32.MD, VECTOR.MD and others
 - [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now handles nested comments, CRLF, and single quotes in line comments.
@@ -129,7 +129,7 @@ The test harness skeleton (`test_harness.py`) is in place with 27 passing tests.
 ### Priority 1 — Expand coverage from git history
 
 1. **Review git commit history for bug patterns to test**
-   - Run `git log --all --oneline -- wapi/parser.py` to find commits that fixed bugs
+   - Run `git log --all --oneline -- wapidoc/parser.py` to find commits that fixed bugs
    - For each bug fix, create a regression test that reproduces the original bug
    - Key commits to review:
      - Block comment stripping fixes (nested `/*`, CRLF, single quotes in `//`)
@@ -206,7 +206,7 @@ The test harness skeleton (`test_harness.py`) is in place with 27 passing tests.
 
 ```bash
 cd /home/mongo.guest/Users/mongo/Dropbox/Code/2026/Pi-agent-env/Sandbox
-python3 wapi/cli.py /home/mongo.guest/Users/mongo/Dropbox/Code/2026/Pi-agent-env/Sandbox/EXAMPLE -v
+python3 wapidoc/cli.py /home/mongo.guest/Users/mongo/Dropbox/Code/2026/Pi-agent-env/Sandbox/EXAMPLE -v
 ```
 
 ### Watcom-Specific Considerations
