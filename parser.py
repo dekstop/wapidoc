@@ -448,8 +448,9 @@ class HeaderParser:
             template_params = self._current_template_params[:]
             self._current_template_params = []
 
-        # Parameters
-        params = self._extract_params(after)
+        # Parameters — collect multi-line params if needed
+        param_text = self._collect_multiline_params(lines, idx, after)
+        params = self._extract_params(param_text)
 
         # Build a signature key for deduplication
         sig_key = (func_name, return_type, len(params))
@@ -651,7 +652,8 @@ class HeaderParser:
                 # Extract just the method name (after ::)
                 func_name = scope_name.split('::')[-1]
                 after = stripped[m.end():]
-                params = self._extract_params(after)
+                param_text = self._collect_multiline_params(lines, i, after)
+                params = self._extract_params(param_text)
                 comment = self._find_comment_backwards(lines, i)
                 is_virtual = 'virtual' in stripped.lower()
                 is_inline = 'inline' in stripped.lower()
@@ -679,7 +681,8 @@ class HeaderParser:
             if ctor_m and class_name and ctor_m.group(1) == class_name:
                 func_name = ctor_m.group(1)
                 after = stripped[ctor_m.end():]
-                params = self._extract_params(after)
+                param_text = self._collect_multiline_params(lines, i, after)
+                params = self._extract_params(param_text)
                 comment = self._find_comment_backwards(lines, i)
                 is_inline = 'inline' in stripped.lower()
                 # Dedup: same name + params
@@ -1137,6 +1140,33 @@ class HeaderParser:
         text = line[idx:]  # everything from '<' onwards
         params = self._extract_template_params(text)
         return params, 0
+
+    def _collect_multiline_params(self, lines: List[str], start_idx: int, after_text: str) -> str:
+        """Collect parameter text from multi-line function declarations.
+        
+        If the closing ) is not on the current line, keep reading lines until ) is found.
+        Returns the full parameter text between ( and ).
+        """
+        # Check if ) is already on this line
+        if ')' in after_text:
+            # Extract just up to the closing paren
+            idx = after_text.find(')')
+            return after_text[:idx]
+        
+        # Multi-line: collect from subsequent lines
+        param_text = after_text
+        i = start_idx + 1
+        while i < len(lines):
+            line = lines[i].strip()
+            param_text += ' ' + line
+            if ')' in line:
+                # Found closing paren
+                idx = line.find(')')
+                param_text = param_text[:-(len(line) - idx)]
+                break
+            i += 1
+        
+        return param_text
 
     def _extract_params(self, text: str) -> List[Parameter]:
         """Extract function parameters from text after the opening paren."""

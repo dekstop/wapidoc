@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+### 2026-05-17 — Fix multi-line function parameter extraction
+
+- Parameters spanning multiple lines are now correctly collected
+- Added `_collect_multiline_params()` helper that reads lines until `)` is found
+- Updated `_try_parse_function()`, `_extract_class_body()` for methods, constructors, and operator overloads
+- Example: `Font::write(const char *txt, int x, int y, T col,\n    T* screen, int screenWidth)` now captures all 6 params
+- 27/27 tests passing
+
+---
+
 ### 2026-05-17 — Fix // line comment extraction and param type/symbol placement
 
 - Preserve `//` line comments in `_strip_block_comments()` (previously stripped entirely)
