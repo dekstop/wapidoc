@@ -48,7 +48,32 @@ _PARAM_RE_ANON = re.compile(r'^([\w<>,\[\]\s*&]+)$')
 
 # Patterns for class method extraction
 _METHOD_SCOPE_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+::\w+)\s*\(')
+_METHOD_SCOPE_RE_CONST = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+::\w+)\s*\([^)]*\)\s*const')
 _DTOR_RE = re.compile(r'^\s*~(\w+)\s*\(')
+# Operator overload patterns — match return_type followed by operator<symbol>(...)
+# Handles: operator*, operator[], operator+, operator-, operator/, operator=,
+#          operator<<, operator>>, operator!, operator(), operator new, operator delete,
+#          operator*=, operator+=, operator-=, operator/=, operator<<=, operator>>=
+# The return type group (.+?) is non-greedy to stop at 'operator' keyword.
+# The pattern ignores content after the closing paren (function bodies, etc.).
+_OPERATOR_RE = re.compile(
+    r'^\s*(?:inline\s+|static\s+|virtual\s+)?'
+    r'(.+?)'
+    r'\s+operator'
+    r'\s*(\*\*|\*=|\*|\+=|\-=|\/|\/=|<<=|>>=|<<|>>|\+|-|=|\[\]|\(\)|!|new|delete)'
+    r'\s*\(([^)]*)\)'
+    r'\s*(?:const)?'
+    r'\s*\{?'
+)
+# Scope-qualified operator: ClassName::operator<symbol>(...)
+_OPERATOR_SCOPE_RE = re.compile(
+    r'^\s*(?:inline\s+|static\s+|virtual\s+)?'
+    r'(.+?)'
+    r'\s+(\w+::operator\s*(?:\*\*|\*=|\*|\+=|\-=|\/|\/=|<<=|>>=|<<|>>|\+|-|=|\[\]|\(\)|!|new|delete))'
+    r'\s*\(([^)]*)\)'
+    r'\s*(?:const)?'
+    r'\s*\{?'
+)
 _TEMPLATE_RE = re.compile(r'^\s*template\s*<')
 
 
@@ -382,23 +407,38 @@ class HeaderParser:
                             seen_functions: set = None) -> bool:
         """Parse a top-level function declaration.
         Uses seen_functions set to avoid duplicate declarations.
-        Template params from preceding template line are consumed."""
+        Template params from preceding template line are consumed.
+        Handles operator overloads (operator*, operator[], operator+, etc.)."""
         if stripped is None:
             stripped = lines[idx].strip()
-        m = _FUNC_SIG_RE.match(stripped)
-        if not m:
-            m = _FUNC_SIG_RE_NOSPACE.match(stripped)
-        if not m:
-            return False
 
-        return_type = m.group(1)
-        func_name = m.group(2)
+        return_type = ""
+        func_name = ""
+        after = ""
+
+        # Try operator overload pattern first
+        m = _OPERATOR_RE.match(stripped)
+        if m:
+            return_type = m.group(1)
+            op_symbol = m.group(2)
+            func_name = "operator" + op_symbol
+            after = m.group(3) + ")"
+        else:
+            # Try standard function signature
+            m = _FUNC_SIG_RE.match(stripped)
+            if not m:
+                m = _FUNC_SIG_RE_NOSPACE.match(stripped)
+            if m:
+                return_type = m.group(1)
+                func_name = m.group(2)
+                after = stripped[m.end():]
+
+        if not func_name:
+            return False
 
         # Skip if return type looks like a keyword (not a real type)
         if return_type in _SKIP_KEYWORDS:
             return False
-
-        after = stripped[m.end():]
 
         # Template params: check inline angle brackets first, then stored from template line
         template_params = []
@@ -541,6 +581,65 @@ class HeaderParser:
                         is_virtual=False,
                         is_inline=False
                     ))
+                i += 1
+                continue
+
+            # Check for scope-qualified operator: ClassName::operator<symbol>(...)
+            m = _OPERATOR_SCOPE_RE.match(stripped)
+            if m:
+                return_type = m.group(1)
+                scope_name = m.group(2)  # e.g., "Font::operator *"
+                op_symbol = m.group(2).split('operator')[-1].strip()
+                func_name = 'operator' + op_symbol
+                after = m.group(3) + ')'
+                params = self._extract_params(after)
+                comment = self._find_comment_backwards(lines, i)
+                is_virtual = 'virtual' in stripped.lower()
+                is_inline = 'inline' in stripped.lower()
+                is_static = 'static' in stripped.lower()
+                sig_key = (func_name, return_type, tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type=return_type,
+                        parameters=params,
+                        template_params=self._current_template_params[:],
+                        comment=comment,
+                        is_virtual=is_virtual,
+                        is_inline=is_inline,
+                        is_static=is_static
+                    ))
+                self._current_template_params = []
+                i += 1
+                continue
+
+            # Check for operator method: return_type operator<symbol>(...)
+            m = _OPERATOR_RE.match(stripped)
+            if m:
+                return_type = m.group(1)
+                op_symbol = m.group(2)
+                func_name = 'operator' + op_symbol
+                after = m.group(3) + ')'
+                params = self._extract_params(after)
+                comment = self._find_comment_backwards(lines, i)
+                is_virtual = 'virtual' in stripped.lower()
+                is_inline = 'inline' in stripped.lower()
+                is_static = 'static' in stripped.lower()
+                sig_key = (func_name, return_type, tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type=return_type,
+                        parameters=params,
+                        template_params=self._current_template_params[:],
+                        comment=comment,
+                        is_virtual=is_virtual,
+                        is_inline=is_inline,
+                        is_static=is_static
+                    ))
+                self._current_template_params = []
                 i += 1
                 continue
 
