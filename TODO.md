@@ -36,15 +36,15 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - Handles `#include` directives — records them but doesn't follow (isolation mode)
   - Brace counting for class/namespace body extraction
 
-- [x] **Brace counting includes commented-out lines** — FIXED: Lines starting with `//` are now skipped when counting braces. The `brace_count <= 0` check now fires immediately after brace counting.
-- [x] **Class methods not extracted** — FIXED: Added patterns for constructors (`ClassName(`), destructors (`~ClassName(`), and methods with `::` scope. Method extraction now happens before the `brace_count > 1` check.
-- [x] **Namespace items not extracted** — FIXED: `_extract_namespace_body` now properly extracts classes, functions, enums, typedefs, and macros from namespace bodies.
-- [x] **Macros not extracted** — FIXED: The main loop now advances `i` after each construct match.
-- [x] **Template classes treated as nested classes** — FIXED: Template lines (`template <...>`) are now skipped in the main loop and class bodies.
-- [x] **`_try_parse_class` and `_try_parse_namespace` don't return next index** — FIXED: Both now return the index after the construct.
-- [x] **Control flow keywords parsed as functions** — FIXED: Added keyword filtering (`return`, `if`, `while`, etc.) in the main loop and `_try_parse_function`.
-- [x] **Function regex doesn't handle leading whitespace** — FIXED: Added `^\s*` and `inline`/`static`/`virtual` keyword handling to `_FUNC_SIG_RE`.
-- [x] **Unnamed parameters cause regex failure** — FIXED: Made parameter name optional in `_PARAM_RE`.
+- [x] **Brace counting includes commented-out lines** — FIXED: Lines starting with `//` are now skipped when counting braces.
+- [x] **Class methods not extracted** — FIXED: Added patterns for constructors, destructors, and `::` scope methods.
+- [x] **Namespace items not extracted** — FIXED: `_extract_namespace_body` now extracts all item types from namespace bodies.
+- [x] **Macros not extracted** — FIXED: Main loop now advances `i` after each construct match.
+- [x] **Template classes treated as nested classes** — FIXED: Template lines are now skipped in main loop and class bodies.
+- [x] **`_try_parse_class` and `_try_parse_namespace` don't return next index** — FIXED: Both now return the correct next index.
+- [x] **Control flow keywords parsed as functions** — FIXED: Added keyword filtering in main loop and `_try_parse_function`.
+- [x] **Function regex doesn't handle leading whitespace** — FIXED: Added `^\s*` and keyword handling to `_FUNC_SIG_RE`.
+- [x] **Unnamed parameters cause regex failure** — FIXED: Parameter name is now optional in `_PARAM_RE`.
 
 ## Phase 4 — Markdown Writer
 
@@ -80,21 +80,16 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - `python3 wapi/cli.py /path/to/Sandbox/EXAMPLE -v -o /path/to/Sandbox/docs`
   - 28 header files processed, 0 errors
   - Output reviewed for GRAPHICS.MD, MATH32.MD, VECTOR.MD and others
-- [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now correctly handles:
-  - Nested `/* ... */` patterns inside block comments
-  - Windows CRLF line endings
-  - Line comments (`//`) that contain single quotes (e.g., `can't`) which previously caused the parser to get stuck in quote mode
-- [x] **Parameter extraction** — FIXED: `_PARAM_RE` regex updated to correctly extract types and names:
-  - Anonymous parameters (e.g., `float`) now extracted correctly
-  - Pointer/reference parameters (e.g., `const Vector<T,Dim> &p`) now extracted correctly
-  - Multi-word types (e.g., `const char *`) now extracted correctly
-- [ ] Fix parser edge cases discovered during testing
+- [x] **Block comments not stripped** — FIXED: `_strip_block_comments()` now handles nested comments, CRLF, and single quotes in line comments.
+- [x] **Parameter extraction** — FIXED: `_PARAM_RE` regex now correctly extracts types, names, pointers, references, and multi-word types.
+
 - [x] Test with headers containing:
   - Heavy template usage (GRAPHICS.H) — tested, output reviewed
   - Inline assembly pragmas (MATH32.H) — tested, output reviewed
   - Namespace blocks (GRAPHICS.H — Tex8bpp) — tested, output reviewed
   - Multiple classes in one file (GRAPHICS.H) — tested, output reviewed
   - Forward declarations — tested
+- [x] **Test harness created** — `test_harness.py` with 27 regression test cases covering block comments, parameter extraction, function signatures, classes, macros, typedefs, namespaces, and real-header integration patterns.
 - [ ] Handle any Watcom-specific constructs not covered
 - [ ] Performance test with larger projects
 
@@ -121,8 +116,71 @@ These are the remaining known issues that affect output quality:
 3. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
 
 4. **Attribute type/name extraction** — Multi-word types (e.g., `const unsigned int`) are not correctly extracted; only the first word is captured as the type.
-5. **Duplicate function declarations** — Some function declarations may appear twice (declaration + definition). Deduplication uses `(func_name, return_type, len(params))` but doesn't account for different parameter types.
-6. **Empty template classes** — Template classes with no methods (e.g., `SetPixel`) are extracted as empty classes.
+
+---
+
+## Test Harness — Implementation Plan (Future Work)
+
+The test harness skeleton (`test_harness.py`) is in place with 27 passing tests. The following enhancements are planned:
+
+### Priority 1 — Expand coverage from git history
+
+1. **Review git commit history for bug patterns to test**
+   - Run `git log --all --oneline -- wapi/parser.py` to find commits that fixed bugs
+   - For each bug fix, create a regression test that reproduces the original bug
+   - Key commits to review:
+     - Block comment stripping fixes (nested `/*`, CRLF, single quotes in `//`)
+     - Parameter extraction regex fixes (anonymous params, pointers, references)
+     - Class method extraction (constructors, destructors, `::` scope)
+     - Control flow keyword filtering
+     - Template line skipping
+     - Duplicate function deduplication
+   - Extract representative source snippets from EXAMPLE headers and create test cases
+
+2. **Add integration tests against real header files**
+   - Parse each EXAMPLE header file directly and validate the AST
+   - Check that expected classes, functions, macros, typedefs, enums are present
+   - Verify parameter counts and types match known-good output
+   - Store expected AST snapshots in `test_data/` directory
+
+### Priority 2 — Output validation
+
+3. **Markdown output comparison tests**
+   - Generate markdown for known headers and compare against golden files
+   - Store golden output in `test_data/golden/`
+   - Use diff-based comparison to catch regressions
+
+4. **AST structure validation**
+   - Verify that `HeaderDoc` has correct structure (no circular references)
+   - Check that class methods are properly nested (not duplicated in global functions)
+   - Validate template parameter extraction accuracy
+
+### Priority 3 — Edge cases
+
+5. **Edge case test cases**
+   - Empty header files
+   - Headers with only comments
+   - Headers with deeply nested templates (e.g., `Map<String, Vector<int>>`)
+   - Headers with multiple `#pragma aux` blocks
+   - Headers with `#ifdef` / `#endif` guards
+   - Headers with Windows CRLF line endings (real-world format)
+   - Headers with inline assembly blocks
+   - Headers with forward declarations only
+   - Headers with operator overloading (`operator+`, etc.)
+   - Headers with template specialisations
+
+6. **Parser robustness tests**
+   - Malformed syntax (unclosed braces, missing semicolons)
+   - Extremely long lines
+   - Headers with mixed tabs and spaces
+   - Headers with unusual whitespace patterns
+
+### Priority 4 — CI/CD integration
+
+7. **Automated test runner**
+   - Add `Makefile` or shell script to run all tests
+   - Configure CI to run `python3 test_harness.py` on every commit
+   - Add `--export` flag support for JSON results in CI logs
 
 ---
 
