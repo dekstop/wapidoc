@@ -528,6 +528,266 @@ typedef Vector<float,3> Vector3D;""",
             expected_functions=0,  # Class methods stored in class.methods
             expected_functions_match=[]
         ),
+
+        # ─── Regression tests from git history ───────────────────────
+
+        TestCase(
+            "regression_block_comment_stripping",
+            "Regression: block comments must be fully stripped (not left in output)",
+            source="""/* This is a block comment */
+int foo(int x);
+
+/*
+ * Multi-line block
+ * with multiple lines
+ */
+int bar(int y);""",
+            expected_functions=2,
+            expected_functions_match=[
+                ("foo", "int", [("int", "x")]),
+                ("bar", "int", [("int", "y")])
+            ],
+            expected_no_block_comments=True
+        ),
+        TestCase(
+            "regression_param_pointer",
+            "Regression: pointer symbols * move to type, not name",
+            source="int func(int* ptr);",
+            expected_functions=1,
+            expected_params=[("func", [("int*", "ptr")])]
+        ),
+        TestCase(
+            "regression_param_reference",
+            "Regression: reference symbols & move to type, not name",
+            source="void swap(int &a, int &b);",
+            expected_functions=1,
+            expected_params=[("swap", [("int&", "a"), ("int&", "b")])]
+        ),
+        TestCase(
+            "regression_attribute_pointer",
+            "Regression: class attributes with * correctly split type/name",
+            source="""class Font {
+public:
+    uint8_t *data;
+    Font(uint8_t *data, unsigned int w);
+    ~Font();
+};""",
+            expected_classes=1,
+            expected_attributes=[("data", "uint8_t *")],
+            expected_functions=0,
+            expected_functions_match=[]
+        ),
+        TestCase(
+            "regression_control_flow_skip",
+            "Regression: control flow keywords must not be parsed as functions",
+            source="if (x > 0) { return x; }",
+            expected_functions=0
+        ),
+        TestCase(
+            "regression_return_skip",
+            "Regression: return statements must not be parsed as functions",
+            source="return ((c[0]>0) || (c[1]>0));",
+            expected_functions=0
+        ),
+        TestCase(
+            "regression_duplicate_destructor",
+            "Regression: duplicate destructors must be deduplicated",
+            source="""class Vector {
+public:
+    ~Vector();
+    ~Vector();
+};""",
+            expected_classes=1,
+            expected_functions=0,
+            expected_no_duplicates=True
+        ),
+        TestCase(
+            "regression_pragma_aux_skip",
+            "Regression: #pragma aux blocks must be skipped correctly",
+            source="""inline float fabs(float);
+#pragma aux fabs parm [8087] value [8087] modify [8087] = \\
+  "fabs"
+
+inline float sin(float);
+#pragma aux sin parm [8087] value [8087] modify [8087] = \\
+  "fsin"
+
+float fmod(float v, float div) {
+  while (v > div) v -= div;
+  return v;
+}""",
+            expected_functions=3,
+            expected_functions_match=[
+                ("fabs", "float", [("float", "")]),
+                ("sin", "float", [("float", "")]),
+                ("fmod", "float", [("float", "v"), ("float", "div")])
+            ]
+        ),
+        TestCase(
+            "regression_template_line_skip",
+            "Regression: template lines must be consumed and not parsed as functions",
+            source="""template <class T, int Dim>
+class Vector {
+public:
+    Vector();
+    void print();
+};""",
+            expected_classes=1,
+            expected_functions=0,
+            expected_functions_match=[]
+        ),
+        TestCase(
+            "regression_namespace_items",
+            "Regression: namespace items must go into ns.items, not global functions",
+            source="""namespace Tex8bpp {
+    inline uint8_t saturate(uint8_t v);
+}""",
+            expected_namespaces=1,
+            expected_functions=0,
+            expected_namespace_items=[("saturate", "uint8_t", [("uint8_t", "v")])]
+        ),
+
+        # ─── Integration tests against real EXAMPLE headers ──────────
+
+        TestCase(
+            "integration_real_graphics_font",
+            "Integration: Font class from GRAPHICS.H — constructor, destructor, methods",
+            source="""class Font {
+public:
+    uint8_t *data;
+    const unsigned int charwidth;
+    const unsigned int charheight;
+
+    Font(uint8_t *data, unsigned int charwidth);
+    ~Font();
+    static Font* load(const char* filename, int charwidth);
+    int write(const char* txt, int x, int y);
+};""",
+            expected_classes=1,
+            expected_attributes=[("data", "uint8_t *"), ("charwidth", "const unsigned int"), ("charheight", "const unsigned int")],
+            expected_functions=0,
+            expected_functions_match=[]
+        ),
+        TestCase(
+            "integration_real_vector",
+            "Integration: Vector class from VECTOR.H — template class with typedefs",
+            source="""template <class T, int Dim>
+class Vector {
+public:
+    T coords[Dim];
+    Vector();
+    Vector(const Vector<T,Dim> &p);
+    void print();
+};
+
+typedef Vector<float,2> Vector2D;
+typedef Vector<float,3> Vector3D;""",
+            expected_classes=1,
+            expected_typedefs=2,
+            expected_functions=0,
+            expected_functions_match=[]
+        ),
+        TestCase(
+            "integration_real_math32",
+            "Integration: MATH32.H — inline functions with #pragma aux blocks",
+            source="""inline float fabs(float);
+#pragma aux fabs parm [8087] value [8087] modify [8087] = \\
+  "fabs"
+
+inline float sin(float);
+#pragma aux sin parm [8087] value [8087] modify [8087] = \\
+  "fsin"
+
+float fmod(float v, float div) {
+  while (v > div) v -= div;
+  return v;
+}
+
+/*
+float pow(float, float);
+#pragma aux pow parm [8087] [8087] value [8087] modify [8087 ax] = \\
+  "fld1"
+*/
+
+float pow(float b, float e) {
+  if (b<0) {
+    float sign = ((int)(e) & 1) ? -1 : 1;
+    return sign * fabs(b);
+  }
+  return fabs(b);
+}""",
+            expected_functions=4,
+            expected_functions_match=[
+                ("fabs", "float", [("float", "")]),
+                ("sin", "float", [("float", "")]),
+                ("fmod", "float", [("float", "v"), ("float", "div")]),
+                ("pow", "float", [("float", "b"), ("float", "e")])
+            ],
+            expected_no_duplicates=True
+        ),
+        TestCase(
+            "integration_real_graphics_namespace",
+            "Integration: Tex8bpp namespace from GRAPHICS.H — functions in ns.items",
+            source="""namespace Tex8bpp {
+    inline uint8_t saturate(uint8_t v);
+    inline float clamp(float v, float min, float max);
+}""",
+            expected_namespaces=1,
+            expected_functions=0,
+            expected_namespace_items=[
+                ("saturate", "uint8_t", [("uint8_t", "v")]),
+                ("clamp", "float", [("float", "v"), ("float", "min"), ("float", "max")])
+            ]
+        ),
+
+        # ─── Edge case tests ─────────────────────────────────────────
+
+        TestCase(
+            "edge_case_empty_header",
+            "Edge case: empty header file",
+            source="",
+            expected_functions=0,
+            expected_classes=0,
+            expected_macros=0,
+            expected_typedefs=0,
+            expected_enums=0,
+            expected_namespaces=0
+        ),
+        TestCase(
+            "edge_case_only_comments",
+            "Edge case: header with only comments",
+            source="""/* This is a header file */
+// With line comments
+/* Another block */""",
+            expected_functions=0,
+            expected_classes=0,
+            expected_macros=0,
+            expected_typedefs=0,
+            expected_enums=0,
+            expected_namespaces=0
+        ),
+        TestCase(
+            "edge_case_crlf_endings",
+            "Edge case: Windows CRLF line endings",
+            source="int foo(int x);\r\nint bar(int y);\r\n".replace("\n", "\r\n"),
+            expected_functions=2,
+            expected_functions_match=[
+                ("foo", "int", [("int", "x")]),
+                ("bar", "int", [("int", "y")])
+            ]
+        ),
+        TestCase(
+            "edge_case_operator_overload",
+            "Edge case: operator overload parsing",
+            source="""class Vector {
+public:
+    Vector operator+(const Vector &v);
+    void operator+=(const Vector &v);
+};""",
+            expected_classes=1,
+            expected_functions=0,
+            expected_functions_match=[]
+        ),
     ]
 
 

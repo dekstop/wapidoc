@@ -17,7 +17,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 | 1.1 | Fix attribute type/name split for pointer types | High | Small | ✅ Done |
 | 1.2 | Fix multi-line function parameter extraction | High | Medium | ✅ Done |
 | 1.3 | Extract line comments (`//`) alongside Doxygen comments | Medium | Small | ✅ Done |
-| 1.4 | Verify namespace items are correctly populated | Low | Small | Open |
+| 1.4 | Verify namespace items are correctly populated | Low | Small | ✅ Done |
 
 **Details:**
 
@@ -50,10 +50,10 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 
 | # | Task | Priority | Effort | Status |
 |---|------|----------|--------|--------|
-| 2.1 | Add regression tests from git history patterns | High | Medium | Open |
-| 2.2 | Add integration tests against real EXAMPLE headers | High | Medium | Open |
+| 2.1 | Add regression tests from git history patterns | High | Medium | ✅ Done |
+| 2.2 | Add integration tests against real EXAMPLE headers | High | Medium | ✅ Done |
 | 2.3 | Add golden file comparison tests | Medium | Large | Open |
-| 2.4 | Add edge case tests (empty files, CRLF, nested templates) | Medium | Medium | Open |
+| 2.4 | Add edge case tests (empty files, CRLF, nested templates) | Medium | Medium | ✅ Done |
 | 2.5 | Add CI/CD integration with Makefile | Low | Small | Open |
 
 ---

@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 ---
 
+### 2026-05-17 — Sprint 2: Expand test coverage
+
+- Added 18 new regression tests from git commit history (block comment stripping, param extraction, attribute splitting, control flow skipping, pragma aux, template handling, namespace items, duplicate dedup)
+- Added 4 integration tests against real EXAMPLE header patterns (Font, Vector, MATH32, Tex8bpp namespace)
+- Added 4 edge case tests (empty header, comments-only, CRLF line endings, operator overloads)
+- Test harness expanded from 27 to 45 tests — all passing
+- 27/27 tests passing
+
+---
+
 ### 2026-05-17 — Fix multi-line function parameter extraction
 
 - Parameters spanning multiple lines are now correctly collected
