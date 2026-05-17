@@ -123,14 +123,14 @@ class HeaderParser:
                     i += 2
                     result.append(' ' * 2)
                 elif source[i:i+2] == '//':
-                    # Line comment: skip to end of line
-                    i += 2
+                    # Preserve // line comments for later extraction by _find_comment_backwards
                     while i < len(source) and source[i] != '\n' and source[i] != '\r':
+                        result.append(source[i])
                         i += 1
                     # Preserve the newline
                     if i < len(source):
                         if source[i] == '\r':
-                            result.append(' ')
+                            result.append('\r')
                             i += 1
                             if i < len(source) and source[i] == '\n':
                                 result.append('\n')
@@ -948,17 +948,64 @@ class HeaderParser:
 
     # ─── Comment extraction ───────────────────────────────────
 
+    @staticmethod
+    def _is_code_line(comment: str) -> bool:
+        """Check if a line comment looks like commented-out code rather than documentation."""
+        # If it contains assignment, likely code (but not in documentation like "* exp = 1")
+        if '=' in comment:
+            # Check if it looks like code assignment (not documentation list items)
+            stripped = comment.strip()
+            if not stripped.startswith('*') and not stripped.startswith('-'):
+                return True
+        # If it looks like a closing brace from commented-out code
+        if comment.strip() == '}':
+            return True
+        # If it starts with // (e.g., ////), it's likely a section marker
+        if comment.startswith('//'):
+            return True
+        # If it starts with a C/C++ type keyword followed by code-like patterns
+        code_prefixes = ('void ', 'int ', 'float ', 'double ', 'char ', 'bool ',
+                        'unsigned ', 'signed ', 'long ', 'short ', 'auto ',
+                        'inline ', 'static ', 'const ', 'volatile ', 'extern ',
+                        'struct ', 'class ', 'enum ', 'typedef ', 'namespace ')
+        lower = comment.lower().strip()
+        for prefix in code_prefixes:
+            if lower.startswith(prefix):
+                return True
+        # If it contains function call syntax at the START of the line (not mid-sentence)
+        # e.g., "void func(" or "image<SetPixel>(" but NOT "to glow(), here"
+        import re
+        # Check for function calls at line start (with optional template args)
+        if re.match(r'^\s*\w+(?:<[^>]+>)?\s*\(', comment):
+            return True
+        return False
+
     def _find_comment_backwards(self, lines: List[str], idx: int) -> str:
-        """Find the Doxygen comment immediately preceding a line."""
+        """Find the Doxygen comment immediately preceding a line.
+        Also captures preceding // line comments."""
         i = idx - 1
+
+        # Collect any preceding // line comments (skip empty lines between them)
+        line_comments = []
+        while i >= 0:
+            stripped = lines[i].strip()
+            if stripped.startswith('//'):
+                comment_text = stripped[2:].strip()
+                # Skip lines that look like commented-out code
+                if not self._is_code_line(comment_text):
+                    line_comments.insert(0, comment_text)
+                i -= 1
+                continue
+            if not stripped:
+                i -= 1
+                continue
+            break
+
         # Skip empty lines and regular comments
         while i >= 0:
             stripped = lines[i].strip()
             if stripped.startswith('/*') and not stripped.startswith('/**'):
                 # Regular comment, skip
-                i -= 1
-                continue
-            if stripped.startswith('//'):
                 i -= 1
                 continue
             if not stripped:
@@ -987,10 +1034,15 @@ class HeaderParser:
                             elif t.startswith('//'):
                                 comment_lines.append(t[2:].strip())
                             k += 1
-                        return ' '.join(comment_lines)
+                        result = ' '.join(comment_lines)
+                        if line_comments:
+                            result = ' '.join(line_comments) + '. ' + result
+                        return result
                     elif s.startswith('*') or s == '*/' or not s:
                         j -= 1
                     else:
+                        if line_comments:
+                            return ' '.join(line_comments)
                         return ""
             # Found potential Doxygen comment start (/**)
             if stripped.startswith('/**'):
@@ -1001,12 +1053,21 @@ class HeaderParser:
                     if s.startswith('/**'):
                         comment_lines.append(s[3:].strip())
                     elif s == '*/':
-                        return ' '.join(comment_lines)
+                        result = ' '.join(comment_lines)
+                        if line_comments:
+                            result = ' '.join(line_comments) + '. ' + result
+                        return result
                     elif s.startswith('*'):
                         comment_lines.append(s[1:].strip())
                     elif s.startswith('//'):
                         comment_lines.append(s[2:].strip())
                     j -= 1
+                if line_comments:
+                    return ' '.join(line_comments)
+                return ""
+            # No Doxygen comment found — return line comments if any
+            if line_comments:
+                return ' '.join(line_comments)
             return ""
         return ""
 
@@ -1109,6 +1170,13 @@ class HeaderParser:
                 default = m.group(3) if m.group(3) else ""
                 # Clean up type: remove extra whitespace
                 param_type = ' '.join(param_type.split())
+                # Fix: pointer/reference symbols attached to name should go to type
+                prefix = ''
+                while param_name and param_name[0] in ('*', '&'):
+                    prefix = param_name[0] + prefix
+                    param_name = param_name[1:]
+                if prefix:
+                    param_type = param_type + prefix
                 params.append(Parameter(name=param_name, type=param_type, default=default))
             else:
                 # Try anonymous parameter (just type, no name)

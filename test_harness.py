@@ -301,7 +301,7 @@ int foo(int x);""",
             "Multiple parameters with different types",
             source="int foo(int x, float y, const char *name);",
             expected_functions=1,
-            expected_params=[("foo", [("int", "x"), ("float", "y"), ("const char", "*name")])]
+            expected_params=[("foo", [("int", "x"), ("float", "y"), ("const char*", "name")])]
         ),
         TestCase(
             "param_anonymous",
@@ -319,24 +319,24 @@ int foo(int x);""",
         ),
         TestCase(
             "param_reference",
-            "Reference parameters (&name)",
+            "Reference parameters (&name) — & moves to type",
             source="void swap(int &a, int &b);",
             expected_functions=1,
-            expected_params=[("swap", [("int", "&a"), ("int", "&b")])]
+            expected_params=[("swap", [("int&", "a"), ("int&", "b")])]
         ),
         TestCase(
             "param_template",
-            "Template type parameters",
+            "Template type parameters — & moves to type",
             source="void process(Vector<T,Dim> &v);",
             expected_functions=1,
-            expected_params=[("process", [("Vector<T,Dim>", "&v")])]
+            expected_params=[("process", [("Vector<T,Dim>&", "v")])]
         ),
         TestCase(
             "param_const_pointer",
-            "Const pointer parameters",
+            "Const pointer parameters — * moves to type",
             source="void write(const char *txt, int x, int y);",
             expected_functions=1,
-            expected_params=[("write", [("const char", "*txt"), ("int", "x"), ("int", "y")])]
+            expected_params=[("write", [("const char*", "txt"), ("int", "x"), ("int", "y")])]
         ),
 
         # ─── Function signature tests ────────────────────────────────
@@ -357,10 +357,10 @@ int foo(int x);""",
         ),
         TestCase(
             "func_virtual",
-            "Virtual function extraction",
+            "Virtual function extraction — & moves to type",
             source="virtual void draw(Graphics<T> &g);",
             expected_functions=1,
-            expected_functions_match=[("draw", "void", [("Graphics<T>", "&g")])]
+            expected_functions_match=[("draw", "void", [("Graphics<T>&", "g")])]
         ),
         TestCase(
             "func_control_flow_skip",

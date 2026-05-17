@@ -16,7 +16,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 |---|------|----------|--------|--------|
 | 1.1 | Fix attribute type/name split for pointer types | High | Small | ✅ Done |
 | 1.2 | Fix multi-line function parameter extraction | High | Medium | Open |
-| 1.3 | Extract line comments (`//`) alongside Doxygen comments | Medium | Small | Open |
+| 1.3 | Extract line comments (`//`) alongside Doxygen comments | Medium | Small | ✅ Done |
 | 1.4 | Verify namespace items are correctly populated | Low | Small | Open |
 
 **Details:**
