@@ -87,13 +87,16 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 
 - [x] Test with headers containing:
   - Heavy template usage (GRAPHICS.H) — tested, output reviewed
+- [x] **Module invocation** — Added `__main__.py` so `python -m wapidoc` works. Fixed imports in all modules to use try/except for both relative and absolute imports, supporting both `python -m wapidoc` and `python wapidoc/cli.py` invocations.
   - Inline assembly pragmas (MATH32.H) — tested, output reviewed
   - Namespace blocks (GRAPHICS.H — Tex8bpp) — tested, output reviewed
   - Multiple classes in one file (GRAPHICS.H) — tested, output reviewed
   - Forward declarations — tested
 - [x] **Test harness created** — `test_harness.py` with 27 regression test cases covering block comments, parameter extraction, function signatures, classes, macros, typedefs, namespaces, and real-header integration patterns.
+- [x] Template types — template params now extracted for classes, methods, and free functions
 - [ ] Handle any Watcom-specific constructs not covered
-- [ ] Performance test with larger projects
+- [x] Performance test with larger projects — 28 headers processed with 0 errors
+- [ ] Performance test with even larger projects (100+ headers)
 
 ## Phase 7 — Documentation & Release
 
@@ -111,6 +114,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 These are the remaining known issues that affect output quality:
 
 1. **Complex template types truncated** — Parameters like `Graphics<T>` are extracted as just `Graphics`. The simple regex-based parameter extraction doesn't handle complex template types with nested angle brackets.
+2. **operator* style functions not parsed** — Functions like `operator*(T v, const Vector<T,Dim> &p)` are not matched by the function regex because `*` is part of the operator name, not a pointer. The regex expects `name(...)` but sees `name*(...`.
 
 2. **Duplicate function declarations** — FIXED: Deduplication now uses full signature key `(name, return_type, param_types)` instead of just `(name, return_type, param_count)`, correctly handling overloaded methods.
 
@@ -171,6 +175,7 @@ The test harness skeleton (`test_harness.py`) is in place with 27 passing tests.
    - Headers with forward declarations only
    - Headers with operator overloading (`operator+`, etc.)
    - Headers with template specialisations
+   - Headers with operator* style functions (pointer return types)
 
 6. **Parser robustness tests**
    - Malformed syntax (unclosed braces, missing semicolons)

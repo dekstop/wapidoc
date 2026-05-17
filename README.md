@@ -128,7 +128,9 @@ The parser currently has several known issues that affect output quality:
    classes, functions, and enums from namespace blocks.
 4. **Macro parsing** — `_try_parse_macro` can cause infinite loops on certain
    constructs due to line index not advancing.
-5. **Template classes** — Template classes (e.g. `template <typename T> class
-   Image`) may be detected as nested classes rather than top-level classes.
+5. **operator* style functions** — Functions with `operator*` syntax (e.g.
+   `Vector<T,Dim> operator*(T v, const Vector<T,Dim> &p)`) are not matched by
+   the function regex because `*` is part of the operator name. The regex expects
+   `name(...)` but sees `name*(...`.
 
 See `TODO.md` for the full list of bugs and planned fixes.

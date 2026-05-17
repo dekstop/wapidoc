@@ -27,6 +27,8 @@ _NAMESPACE_RE = re.compile(r'^\s*namespace\s+(\w+)')
 _ENUM_RE = re.compile(r'^\s*enum\s+(class\s+)?(\w+)')
 _TYPEDEF_RE = re.compile(r'^\s*typedef\s+')
 _FUNC_SIG_RE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+(?:\s*\*)*)\s+(\w+(?:\s*::\s*\w+)?)\s*\(')
+# Alternative regex for pointer return types without space before function name
+_FUNC_SIG_RE_NOSPACE = re.compile(r'^\s*(?:inline\s+|static\s+|virtual\s+)?(\w+)\s*\*+(\w+(?:\s*::\s*\w+)?)\s*\(')
 # Keywords that look like types but aren't
 _SKIP_KEYWORDS = {'return', 'if', 'else', 'while', 'for', 'switch', 'case',
                   'do', 'goto', 'break', 'continue', 'new', 'delete', 'throw',
@@ -58,6 +60,7 @@ class HeaderParser:
 
     def __init__(self):
         self.header = HeaderDoc(filename="")
+        self._current_template_params: List[str] = []
 
     @staticmethod
     def _strip_block_comments(source: str) -> str:
@@ -240,10 +243,12 @@ class HeaderParser:
         class_name = m.group(2)
         after = stripped[m.end():]
 
-        # Template params
+        # Template params: check inline angle brackets first, then stored from template line
         template_params = []
         if after.lstrip().startswith('<'):
             template_params = self._extract_template_params(after)
+        elif self._current_template_params:
+            template_params = self._clear_template_params()
 
         # Base class
         base_class = ""
@@ -269,6 +274,8 @@ class HeaderParser:
             is_struct=(kind == 'struct')
         )
         self.header.classes.append(cls)
+        # Template params are consumed when class is created
+        self._current_template_params = []
         return end_idx
 
     @staticmethod
@@ -374,10 +381,13 @@ class HeaderParser:
     def _try_parse_function(self, lines: List[str], idx: int, stripped: str = None,
                             seen_functions: set = None) -> bool:
         """Parse a top-level function declaration.
-        Uses seen_functions set to avoid duplicate declarations."""
+        Uses seen_functions set to avoid duplicate declarations.
+        Template params from preceding template line are consumed."""
         if stripped is None:
             stripped = lines[idx].strip()
         m = _FUNC_SIG_RE.match(stripped)
+        if not m:
+            m = _FUNC_SIG_RE_NOSPACE.match(stripped)
         if not m:
             return False
 
@@ -390,10 +400,13 @@ class HeaderParser:
 
         after = stripped[m.end():]
 
-        # Template params
+        # Template params: check inline angle brackets first, then stored from template line
         template_params = []
         if after.lstrip().startswith('<'):
             template_params = self._extract_template_params(after)
+        elif self._current_template_params:
+            template_params = self._current_template_params[:]
+            self._current_template_params = []
 
         # Parameters
         params = self._extract_params(after)
@@ -436,8 +449,16 @@ class HeaderParser:
         return True
 
     def _skip_template(self, lines: List[str], start: int) -> int:
-        """Skip a template <...> line, return the line after it."""
+        """Skip a template <...> line, extract params and store them for next construct.
+        Returns the line after the template line(s)."""
+        self._current_template_params = self._extract_template_params(lines[start])
         return start + 1
+
+    def _clear_template_params(self) -> List[str]:
+        """Consume and return the current template params, then clear."""
+        params = self._current_template_params
+        self._current_template_params = []
+        return params
 
     # ─── Body extraction helpers ──────────────────────────────
 
@@ -490,7 +511,7 @@ class HeaderParser:
                 i += 1
                 continue
 
-            # Skip template lines inside class body
+            # Skip template lines inside class body (extract params for next method)
             if _TEMPLATE_RE.match(stripped):
                 i = self._skip_template(lines, i)
                 continue
@@ -544,11 +565,13 @@ class HeaderParser:
                         name=func_name,
                         return_type=return_type,
                         parameters=params,
+                        template_params=self._current_template_params[:],
                         comment=comment,
                         is_virtual=is_virtual,
                         is_inline=is_inline,
                         is_static=is_static
                     ))
+                self._current_template_params = []
                 i += 1
                 continue
 
@@ -636,11 +659,13 @@ class HeaderParser:
                         name=func_name,
                         return_type=return_type,
                         parameters=params,
+                        template_params=self._current_template_params[:],
                         comment=comment,
                         is_virtual=is_virtual,
                         is_inline=is_inline,
                         is_static=is_static
                     ))
+                self._current_template_params = []
                 i += 1
                 continue
 
@@ -687,7 +712,7 @@ class HeaderParser:
                 i += 1
                 continue
 
-            # Skip template lines
+            # Skip template lines (extract params for next construct)
             if _TEMPLATE_RE.match(stripped):
                 i = self._skip_template(lines, i)
                 continue
@@ -710,6 +735,8 @@ class HeaderParser:
             elif self._try_parse_macro(lines, i, stripped):
                 i += 1
             else:
+                # Template params not consumed, clear them
+                self._current_template_params = []
                 i += 1
 
         return i + 1
@@ -812,7 +839,9 @@ class HeaderParser:
         return i
 
     def _extract_template_params(self, text: str) -> List[str]:
-        """Extract template parameters from text like '<T, typename U>'."""
+        """Extract template parameters from text like '<T, typename U>'.
+        Handles angle brackets inside the template parameter list.
+        Strips surrounding angle brackets from each param."""
         params = []
         depth = 0
         current = ""
@@ -832,7 +861,32 @@ class HeaderParser:
                 current += ch
         if current.strip():
             params.append(current.strip())
-        return params
+        # Strip surrounding angle brackets from each param
+        cleaned = []
+        for p in params:
+            p = p.strip()
+            while p.startswith('<'):
+                p = p[1:].strip()
+            while p.startswith('>'):
+                p = p[1:].strip()
+            while p.endswith('<'):
+                p = p[:-1].strip()
+            while p.endswith('>'):
+                p = p[:-1].strip()
+            if p:
+                cleaned.append(p)
+        return cleaned
+
+    def _extract_template_params_from_line(self, line: str) -> List[str]:
+        """Extract template params from a line that starts with 'template <...>'.
+        Returns the params list and the line index after the template line."""
+        # Find the < and extract everything up to the matching >
+        idx = line.find('<')
+        if idx == -1:
+            return [], 0
+        text = line[idx:]  # everything from '<' onwards
+        params = self._extract_template_params(text)
+        return params, 0
 
     def _extract_params(self, text: str) -> List[Parameter]:
         """Extract function parameters from text after the opening paren."""
