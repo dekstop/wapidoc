@@ -438,6 +438,8 @@ class HeaderParser:
     def _extract_class_body(self, lines: List[str], start_idx: int,
                             methods: list, attributes: list, class_name: str = "") -> int:
         """Extract methods and attributes from a class body. Returns index after class."""
+        # Track seen method signatures to avoid duplicates
+        seen_methods = set()
         # Find opening brace
         brace_count = 0
         started = False
@@ -500,14 +502,18 @@ class HeaderParser:
                 after = stripped[m.end():]
                 params = self._extract_params(after)
                 comment = self._find_comment_backwards(lines, i)
-                methods.append(Function(
-                    name=func_name,
-                    return_type='',
-                    parameters=params,
-                    comment=comment,
-                    is_virtual=False,
-                    is_inline=False
-                ))
+                # Dedup: same name + params
+                sig_key = (func_name, tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type='',
+                        parameters=params,
+                        comment=comment,
+                        is_virtual=False,
+                        is_inline=False
+                    ))
                 i += 1
                 continue
 
@@ -524,15 +530,19 @@ class HeaderParser:
                 is_virtual = 'virtual' in stripped.lower()
                 is_inline = 'inline' in stripped.lower()
                 is_static = 'static' in stripped.lower()
-                methods.append(Function(
-                    name=func_name,
-                    return_type=return_type,
-                    parameters=params,
-                    comment=comment,
-                    is_virtual=is_virtual,
-                    is_inline=is_inline,
-                    is_static=is_static
-                ))
+                # Dedup: same name + return_type + params
+                sig_key = (func_name, return_type, tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type=return_type,
+                        parameters=params,
+                        comment=comment,
+                        is_virtual=is_virtual,
+                        is_inline=is_inline,
+                        is_static=is_static
+                    ))
                 i += 1
                 continue
 
@@ -544,14 +554,18 @@ class HeaderParser:
                 params = self._extract_params(after)
                 comment = self._find_comment_backwards(lines, i)
                 is_inline = 'inline' in stripped.lower()
-                methods.append(Function(
-                    name=func_name,
-                    return_type='',
-                    parameters=params,
-                    comment=comment,
-                    is_virtual=False,
-                    is_inline=is_inline
-                ))
+                # Dedup: same name + params
+                sig_key = (func_name, '', tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type='',
+                        parameters=params,
+                        comment=comment,
+                        is_virtual=False,
+                        is_inline=is_inline
+                    ))
                 i += 1
                 continue
 
@@ -563,8 +577,35 @@ class HeaderParser:
 
             # Attribute (simple type + name, no function call)
             if self._is_attribute(stripped, methods):
-                attr_name = stripped.split()[-1].rstrip(';')
-                attr_type = stripped.split()[0]
+                # Extract type and name: handle multi-word types like "const unsigned int"
+                parts = stripped.rstrip(';').strip().split()
+                # Find where the variable name starts (after type words)
+                # Type words are words that look like types (not variable names)
+                # Variable names are typically lowercase identifiers
+                type_parts = []
+                name_idx = 0
+                for idx, part in enumerate(parts):
+                    # A type word typically starts with uppercase or is a known type
+                    # A variable name is lowercase alphanumeric
+                    if part[0].isupper() or part in ('int', 'float', 'double', 'char', 'bool',
+                        'uint8_t', 'uint16_t', 'uint32_t', 'uint64_t',
+                        'int8_t', 'int16_t', 'int32_t', 'int64_t',
+                        'size_t', 'long', 'short', 'unsigned', 'signed',
+                        'const', 'volatile', 'static', 'extern', 'void',
+                        'wchar_t', 'string', 'wstring', 'std'):
+                        type_parts.append(part)
+                    else:
+                        name_idx = idx
+                        break
+
+                if name_idx > 0 and type_parts:
+                    attr_type = ' '.join(type_parts)
+                    # First variable name (may have comma-separated names after)
+                    attr_name = parts[name_idx].rstrip(',;')
+                elif parts:
+                    attr_type = parts[0]
+                    attr_name = parts[-1].rstrip(',;')
+
                 comment = self._find_comment_backwards(lines, i)
                 attributes.append(Attribute(name=attr_name, type=attr_type, comment=comment))
                 i += 1
@@ -581,15 +622,19 @@ class HeaderParser:
                 is_virtual = 'virtual' in stripped.lower()
                 is_inline = 'inline' in stripped.lower()
                 is_static = 'static' in stripped.lower()
-                methods.append(Function(
-                    name=func_name,
-                    return_type=return_type,
-                    parameters=params,
-                    comment=comment,
-                    is_virtual=is_virtual,
-                    is_inline=is_inline,
-                    is_static=is_static
-                ))
+                # Dedup: same name + return_type + params
+                sig_key = (func_name, return_type, tuple((p.type, p.name) for p in params))
+                if sig_key not in seen_methods:
+                    seen_methods.add(sig_key)
+                    methods.append(Function(
+                        name=func_name,
+                        return_type=return_type,
+                        parameters=params,
+                        comment=comment,
+                        is_virtual=is_virtual,
+                        is_inline=is_inline,
+                        is_static=is_static
+                    ))
                 i += 1
                 continue
 

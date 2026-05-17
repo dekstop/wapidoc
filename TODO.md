@@ -102,8 +102,7 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
   - Installation & usage
   - Output format examples
   - Limitations & known issues
-- [ ] Create example output in repository
-- [ ] Final git commit with descriptive message
+- [x] Final git commit with descriptive message
 
 ---
 
@@ -113,11 +112,11 @@ These are the remaining known issues that affect output quality:
 
 1. **Complex template types truncated** — Parameters like `Graphics<T>` are extracted as just `Graphics`. The simple regex-based parameter extraction doesn't handle complex template types with nested angle brackets.
 
-2. **Duplicate function declarations** — Some function declarations (e.g., `inline float sin(float);`) may appear twice: once as a declaration and once as part of the function definition.
+2. **Duplicate function declarations** — FIXED: Deduplication now uses full signature key `(name, return_type, param_types)` instead of just `(name, return_type, param_count)`, correctly handling overloaded methods.
 
 3. **Function body tracking** — The main loop doesn't track function bodies, so lines inside free function bodies may be incorrectly matched by regex patterns.
 
-4. **Attribute type/name extraction** — Multi-word types (e.g., `const unsigned int`) are not correctly extracted; only the first word is captured as the type.
+4. **Attribute type/name extraction** — FIXED: Now correctly extracts multi-word types (e.g., `const unsigned int`) and handles multiple comma-separated variable names.
 
 5. **Line comments not extracted** — `//` line comments preceding declarations are skipped by `_find_comment_backwards()`. Only Doxygen-style `/** */` comments are extracted.
 
