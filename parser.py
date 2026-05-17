@@ -730,6 +730,14 @@ class HeaderParser:
                     attr_type = ' '.join(type_parts)
                     # First variable name (may have comma-separated names after)
                     attr_name = parts[name_idx].rstrip(',;')
+                    # Fix: pointer/reference symbols attached to name should go to type
+                    # e.g., "uint8_t *data" → type="uint8_t *", name="data"
+                    prefix = ''
+                    while attr_name and attr_name[0] in ('*', '&'):
+                        prefix = attr_name[0] + prefix
+                        attr_name = attr_name[1:]
+                    if prefix:
+                        attr_type = attr_type + prefix
                 elif parts:
                     attr_type = parts[0]
                     attr_name = parts[-1].rstrip(',;')

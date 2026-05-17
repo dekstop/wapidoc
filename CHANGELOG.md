@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ---
 
+### 2026-05-17 — Fix attribute type/name split for pointer/reference types
+
+- Pointer symbols (`*`) and reference symbols (`&`) attached to variable names now correctly move to the type
+- `uint8_t *data` → type=`uint8_t*`, name=`data` (was type=`uint8_t`, name=`*data`)
+- Handles both `*` and `&` prefixes (e.g., `int& ref`, `const char* str`)
+- No regression in existing tests (27/27 still passing)
+
+---
+
 ### 2026-05-17 — Namespace body extraction fixed
 
 - Redirect header lists during namespace parsing so items collect locally
