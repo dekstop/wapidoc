@@ -1,4 +1,4 @@
-# Watcom API Doc Generator — TODO
+# wapidoc — Development TODO
 
 Project: Python tool to scan Watcom C++ header files and produce markdown API documentation.
 Host platform: Debian Linux / MacOS
@@ -6,116 +6,68 @@ Target: Watcom C/C++ for 32-bit protected mode DOS
 
 ---
 
-## Changelog
+## Plan
 
-### 2026-05-17 — Namespace body extraction fixed
+### Sprint 1: Fix output quality issues (current)
 
-- Redirect header lists during namespace parsing so items collect locally
-- Track and skip function bodies to prevent brace-counting confusion
-- Count braces from skipped lines for correct namespace boundary detection
-- Collect all namespace items (funcs, classes, enums, typedefs, macros) into `ns.items`
-- Added `_count_braces_in_range()` and `_skip_function_body()` helper methods
-- Updated test harness with `expected_namespace_items` validation
-- Updated README.md with current status
+**Goal**: Improve accuracy of attribute parsing, multi-line parameter extraction, and namespace item collection.
 
-### 2026-05-17 — Document parser limitations, test priorities, and known issues
+| # | Task | Priority | Effort | Status |
+|---|------|----------|--------|--------|
+| 1.1 | Fix attribute type/name split for pointer types | High | Small | Open |
+| 1.2 | Fix multi-line function parameter extraction | High | Medium | Open |
+| 1.3 | Extract line comments (`//`) alongside Doxygen comments | Medium | Small | Open |
+| 1.4 | Verify namespace items are correctly populated | Low | Small | Open |
 
-- Restructured TODO.md with clear sections: changelog, limitations, future work, known issues
-- Added test coverage priorities: regression tests, output validation, edge cases, CI/CD
-- Documented remaining parser issues and planned improvements
+**Details:**
 
-### 2026-05-17 — Operator overload parsing
+1.1 **Attribute type/name split**
+- Current: `uint8_t *data` → `name=*data`, `type=uint8_t`
+- Expected: `name=data`, `type=uint8_t *`
+- Root cause: `_is_attribute()` splits on whitespace and assumes uppercase-first tokens are types. Pointer `*` is attached to the name, not the type.
+- Fix: In `_extract_class_body`, when splitting attribute parts, check if any part is `*` or `&` and move it to the type.
 
-- Parse operator overloads: `operator*`, `operator[]`, `operator+`, `operator-`, `operator/`, `operator=`, `operator<<`, `operator>>`, `operator!`, `operator()`, `operator new`, `operator delete`, and compound assignment operators
-- Added `_OPERATOR_RE` and `_OPERATOR_SCOPE_RE` regex patterns
-- Updated `_try_parse_function` to try operator pattern first
-- Updated `_extract_class_body` to handle operator methods
-- Handles both class methods and free function operators
+1.2 **Multi-line parameter extraction**
+- Current: `Font::write(const char *txt, int x, int y, T col,\nT* screen, int screenWidth)` only extracts 4 params (first line only)
+- Expected: 6 params including `T* screen` and `int screenWidth`
+- Root cause: Method parsing extracts `after` from the matched line only, but the full parameter list spans multiple lines.
+- Fix: After matching a method/func signature, if the line ends with `,\` or `,\n` (continuation), keep reading lines until `)` is found. Build the full param text before calling `_extract_params()`.
 
-### 2026-05-17 — Template type handling improvements
+1.3 **Line comment extraction**
+- Current: `_find_comment_backwards()` skips `//` lines immediately
+- Expected: Extract `//` line comments as well as `/** */` block comments
+- Fix: When walking backwards, if we hit a `//` line, capture the rest of the comment as the doc comment. Handle multiple consecutive `//` lines.
 
-- Extract template params from template lines and associate with next class/method/function
-- Strip angle brackets from extracted template params for clean output
-- Show template params in class declarations (e.g. `class Image<typename T>`)
-- Show template params in method signatures (e.g. `fill<typename DrawPixel>`)
-- Handle pointer return types without space before function name
-- Fix false regex matches caused by backtracking
+1.4 **Namespace items verification**
+- Test: Ensure functions/classes inside namespaces populate `ns.items` not `header.functions`
+- Already implemented in `_extract_namespace_body()`, but verify with real headers.
 
-### 2026-05-17 — __main__.py wrapper and import fixes
+---
 
-- Added `__main__.py` wrapper for module invocation via `python3 -m wapidoc`
-- Fixed import paths across cli.py, parser.py, and writer.py for relative imports
+### Sprint 2: Expand test coverage
 
-### 2026-05-17 — Rename from wapi to wapidoc
+**Goal**: Add regression tests from real header patterns and golden file validation.
 
-- Renamed tool from `wapi` to `wapidoc` throughout all files
-- Updated README.md, TODO.md, cli.py, and test_harness.py
+| # | Task | Priority | Effort | Status |
+|---|------|----------|--------|--------|
+| 2.1 | Add regression tests from git history patterns | High | Medium | Open |
+| 2.2 | Add integration tests against real EXAMPLE headers | High | Medium | Open |
+| 2.3 | Add golden file comparison tests | Medium | Large | Open |
+| 2.4 | Add edge case tests (empty files, CRLF, nested templates) | Medium | Medium | Open |
+| 2.5 | Add CI/CD integration with Makefile | Low | Small | Open |
 
-### 2026-05-17 — Attribute extraction and method deduplication
+---
 
-- Attribute extraction now handles multi-word types (e.g. `const unsigned int`) and multiple comma-separated variable names
-- Method deduplication uses full signature key (name, return_type, param_types) instead of just (name, return_type, param_count)
-- Correctly handles overloaded methods and eliminates false duplicates while keeping legitimately different overloads
+### Sprint 3: Parser hardening
 
-### 2026-05-17 — Doxygen comments for all declarations and multi-line typedefs
+**Goal**: Improve robustness against malformed input and Watcom-specific edge cases.
 
-- `_find_comment_backwards()` now correctly extracts Doxygen comments for top-level functions, class methods, and multi-line declarations
-- Fixed multi-line typedef parsing (`typedef struct`/`enum`/`union { ... } name;`)
-
-### 2026-05-17 — Preserve Doxygen comments and extract class-level documentation
-
-- `_strip_block_comments()` now preserves `/** */` Doxygen comments while stripping regular `/* */` block comments
-- `_find_comment_backwards()` correctly handles `*/` as comment end, skips template lines between comments and declarations, and skips lines starting with `*` (Doxygen content)
-
-### 2026-05-17 — Test harness and pointer param regex
-
-- Added `test_harness.py`: comprehensive regression test suite with 27 test cases covering block comments, parameter extraction, function signatures, classes, macros, typedefs, namespaces, and integration patterns from real headers
-- Fixed `_PARAM_RE` regex to include `*` and `&` in type group, so `int* ptr` parses correctly as `type=int* name=ptr`
-
-### 2026-05-17 — Test harness implementation plan
-
-- Mark test harness creation as complete in Phase 6
-- Added detailed implementation plan for future test harness work:
-  - Priority 1: Expand coverage from git history (extract bug patterns)
-  - Priority 2: Output validation (golden file comparison, AST structure)
-  - Priority 3: Edge cases (empty headers, CRLF, operator overloading, etc.)
-  - Priority 4: CI/CD integration
-
-### 2026-05-17 — Block comment stripping and parameter extraction
-
-- Fixed `_strip_block_comments()` to handle nested `/* ... */` patterns inside block comments, Windows CRLF line endings, and line comments (`//`) containing single quotes
-- Fixed `_PARAM_RE` regex to correctly extract types and names:
-  - Anonymous parameters (e.g. `float`) now extracted correctly
-  - Pointer/reference parameters (e.g. `const Vector<T,Dim> &p`) now extracted correctly
-  - Multi-word types (e.g. `const char *`) now extracted correctly
-- Fixed writer.py to handle empty names and strip whitespace in params
-
-### 2026-05-17 — Update TODO.md: remove duplicate phases, mark completed items, refresh known issues
-
-- Cleaned up duplicate Phase 2 section
-- Marked completed items and refreshed known issues list
-
-### 2026-05-17 — Fix parser bugs: method extraction, brace counting, keyword filtering
-
-- Fixed class method extraction to handle constructors, destructors, and methods with `::` scope resolution
-- Fixed brace counting to detect class/namespace end immediately after brace changes, preventing free functions being captured as class members
-- Added template line skipping in main loop and class bodies
-- Added control flow keyword filtering (return, if, while, etc.)
-- Fixed function regex to handle leading whitespace and inline/static/virtual
-- Fixed parameter extraction to handle unnamed parameters
-- Fixed namespace body extraction
-- All 28 header files now parse without errors
-
-### 2026-05-16 — Initial checkin
-
-- Created project structure: `__init__.py`, `cli.py`, `parser.py`, `writer.py`, `models.py`
-- Implemented Phase 1–5: data models, parser core, markdown writer, CLI & directory traversal
-- Created initial TODO.md with implementation plan and known bug list
-- Created README.md with project overview, usage, and architecture documentation
-
-### 2026-05-16 — Initial commit
-
-- Added `.gitignore` and `LICENSE`
+| # | Task | Priority | Effort | Status |
+|---|------|----------|--------|--------|
+| 3.1 | Handle deeply nested templates (e.g. `Map<String, Vector<int>>`) | Medium | Medium | Open |
+| 3.2 | Handle Watcom inline assembly blocks without crashing | Medium | Medium | Open |
+| 3.3 | Handle forward declarations only (no body) | Low | Small | Open |
+| 3.4 | Performance test with 100+ headers | Low | Small | Open |
 
 ---
 
